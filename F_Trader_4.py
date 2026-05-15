@@ -271,6 +271,19 @@ class MainWindow(QMainWindow):
             if isinstance(self.E_Ticker, QTextEdit):
                 # dejar el widget editable (por defecto ya lo es)
                 pass
+        # Señal para suprimir efectos durante cambios programáticos
+        self._suppress_e_ticker_edit_signal = False
+        # Conectar señales para detectar edición del E_Ticker
+        try:
+            if self._ticker_is_model and self.E_Ticker_model is not None:
+                self.E_Ticker_model.dataChanged.connect(self.on_e_ticker_edited)
+                self.E_Ticker_model.rowsInserted.connect(self.on_e_ticker_edited)
+                self.E_Ticker_model.rowsRemoved.connect(self.on_e_ticker_edited)
+            else:
+                if isinstance(self.E_Ticker, QTextEdit):
+                    self.E_Ticker.textChanged.connect(self.on_e_ticker_edited)
+        except Exception:
+            pass
 
         self.E_Visor_model = QStringListModel()
         self.E_Visor.setModel(self.E_Visor_model)
@@ -322,6 +335,8 @@ class MainWindow(QMainWindow):
             return
 
         self.current_tickers = tickers
+        # Evitar que los cambios programáticos disparen la limpieza de E_Lista
+        self._suppress_e_ticker_edit_signal = True
         if self._ticker_is_model:
             self.E_Ticker_model.setStringList(tickers)
             try:
@@ -331,6 +346,7 @@ class MainWindow(QMainWindow):
         else:
             # poner cada ticker en una línea del QTextEdit
             self.E_Ticker.setPlainText("\n".join(tickers))
+        self._suppress_e_ticker_edit_signal = False
 
         self.start_analysis(tickers)
 
@@ -403,11 +419,37 @@ class MainWindow(QMainWindow):
         self.B_Ticker.setEnabled(False)
         self.B_Cancelar.setEnabled(True)
         self.set_table_headers([])
+        # Al iniciar análisis, vaciar la ventana E_Ticker
+        try:
+            self._suppress_e_ticker_edit_signal = True
+            if self._ticker_is_model and self.E_Ticker_model is not None:
+                self.E_Ticker_model.setStringList([])
+            else:
+                if isinstance(self.E_Ticker, QTextEdit):
+                    self.E_Ticker.clear()
+        finally:
+            self._suppress_e_ticker_edit_signal = False
         self.analysis_thread = AnalysisThread(tickers)
         self.analysis_thread.progress.connect(self.append_to_visor)
         self.analysis_thread.finished.connect(self.on_analysis_finished)
         self.analysis_thread.error.connect(self.on_analysis_error)
         self.analysis_thread.start()
+
+    def on_e_ticker_edited(self, *args, **kwargs):
+        # Si el cambio fue programático, no borramos E_Lista
+        if getattr(self, "_suppress_e_ticker_edit_signal", False):
+            return
+        try:
+            # Limpiar E_Lista (archivo seleccionado)
+            if self.E_Lista_model is not None:
+                self.E_Lista_model.setStringList([])
+            # Limpiar visor y otras ventanas de texto
+            try:
+                self.clear_visor()
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def on_analysis_finished(self, results):
         self.append_to_visor("Análisis finalizado.")
@@ -419,7 +461,9 @@ class MainWindow(QMainWindow):
             self.append_to_visor("No se generaron resultados.")
             return
 
-        filtered_results = [row for row in results if int(row.get("Score", 0)) >= 60]
+        # Ordenar por Score descendente (ranking mayor a menor) y filtrar
+        sorted_results = sorted(results, key=lambda r: int(r.get("Score", 0)), reverse=True)
+        filtered_results = [row for row in sorted_results if int(row.get("Score", 0)) >= 60]
         if not filtered_results:
             self.append_to_visor("No se generaron resultados con score >= 60.")
             return
