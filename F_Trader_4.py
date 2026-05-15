@@ -11,11 +11,16 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QTableWidgetItem,
     QMessageBox,
+    QAbstractItemView,
+    QHeaderView,
+    QTextEdit,
 )
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import io
+import contextlib
 
 # =========================================================
 # CONFIGURACIÓN
@@ -39,14 +44,16 @@ TXT_FILE = "Mi_Lista.txt"
 def download_data_safe(ticker, period="1y", interval="1d", max_retries=3):
     for attempt in range(max_retries):
         try:
-            stock_data = yf.download(
-                ticker,
-                period=period,
-                interval=interval,
-                auto_adjust=True,
-                progress=False,
-                group_by="column",
-            )
+            # yfinance sometimes prints errors to stdout/stderr; silenciamos esa salida
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                stock_data = yf.download(
+                    ticker,
+                    period=period,
+                    interval=interval,
+                    auto_adjust=True,
+                    progress=False,
+                    group_by="column",
+                )
 
             if isinstance(stock_data.columns, pd.MultiIndex):
                 stock_data.columns = stock_data.columns.get_level_values(0)
@@ -247,9 +254,23 @@ class MainWindow(QMainWindow):
         self.E_Lista_model = QStringListModel()
         self.E_Lista.setModel(self.E_Lista_model)
 
-        self.E_Ticker_model = QStringListModel()
-        self.E_Ticker.setModel(self.E_Ticker_model)
-        self.E_Ticker.setSelectionMode(self.E_Ticker.SelectionMode.SingleSelection)
+        # Soportar dos tipos de widgets para E_Ticker: un view con modelo (QStringListModel)
+        # o un QTextEdit (más simple y editable por defecto).
+        self._ticker_is_model = False
+        try:
+            # Intentar usar como lista ligada a modelo
+            self.E_Ticker_model = QStringListModel()
+            self.E_Ticker.setModel(self.E_Ticker_model)
+            self.E_Ticker.setSelectionMode(self.E_Ticker.SelectionMode.SingleSelection)
+            self.E_Ticker.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
+            self._ticker_is_model = True
+        except Exception:
+            # Si falla, tratamos E_Ticker como QTextEdit
+            self.E_Ticker_model = None
+            self._ticker_is_model = False
+            if isinstance(self.E_Ticker, QTextEdit):
+                # dejar el widget editable (por defecto ya lo es)
+                pass
 
         self.E_Visor_model = QStringListModel()
         self.E_Visor.setModel(self.E_Visor_model)
@@ -271,6 +292,12 @@ class MainWindow(QMainWindow):
         self.E_Resultados.setColumnCount(len(headers))
         self.E_Resultados.setHorizontalHeaderLabels(headers)
         self.E_Resultados.setRowCount(0)
+        # Ajustar tamaño de columnas al tamaño de la ventana
+        try:
+            header = self.E_Resultados.horizontalHeader()
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        except Exception:
+            pass
 
     def append_to_visor(self, message):
         current = self.E_Visor_model.stringList()
@@ -295,25 +322,73 @@ class MainWindow(QMainWindow):
             return
 
         self.current_tickers = tickers
-        self.E_Ticker_model.setStringList(tickers)
-        self.E_Ticker.setCurrentIndex(self.E_Ticker_model.index(0, 0))
+        if self._ticker_is_model:
+            self.E_Ticker_model.setStringList(tickers)
+            try:
+                self.E_Ticker.setCurrentIndex(self.E_Ticker_model.index(0, 0))
+            except Exception:
+                pass
+        else:
+            # poner cada ticker en una línea del QTextEdit
+            self.E_Ticker.setPlainText("\n".join(tickers))
 
         self.start_analysis(tickers)
 
     def get_selected_tracker(self):
-        selected_indexes = self.E_Ticker.selectionModel().selectedIndexes()
-        if selected_indexes:
-            return selected_indexes[0].data()
-        if self.E_Ticker_model.rowCount() > 0:
-            return self.E_Ticker_model.data(self.E_Ticker_model.index(0, 0), Qt.ItemDataRole.DisplayRole)
-        return None
+        if self._ticker_is_model:
+            selected_indexes = self.E_Ticker.selectionModel().selectedIndexes()
+            if selected_indexes:
+                return selected_indexes[0].data()
+            if self.E_Ticker_model and self.E_Ticker_model.rowCount() > 0:
+                return self.E_Ticker_model.data(self.E_Ticker_model.index(0, 0), Qt.ItemDataRole.DisplayRole)
+            return None
+        else:
+            text = self.E_Ticker.toPlainText().strip()
+            if not text:
+                return None
+            # devolver la primera línea
+            return text.splitlines()[0].strip()
+
+    def parse_tickers_from_model(self):
+        # Extrae y normaliza tickers desde el modelo editable de E_Ticker
+        combined = []
+        if self._ticker_is_model and self.E_Ticker_model:
+            raw_items = [self.E_Ticker_model.data(self.E_Ticker_model.index(i, 0), Qt.ItemDataRole.DisplayRole) for i in range(self.E_Ticker_model.rowCount())]
+            iterator = raw_items
+        else:
+            text = self.E_Ticker.toPlainText()
+            # dividir en líneas
+            iterator = [ln for ln in text.splitlines()]
+
+        for it in iterator:
+            if it is None:
+                continue
+            # dividir por comas, punto y coma
+            parts = [p.strip() for p in str(it).replace(";", ",").split(",")]
+            for p in parts:
+                if not p:
+                    continue
+                # Normalizar: quitar prefijos y convertir a formato esperado
+                p = p.upper().replace("NASDAQ:", "").replace("NYSE:", "").replace("AMEX:", "")
+                p = p.replace(":", ".").strip()
+                if p:
+                    combined.append(p)
+
+        # eliminar duplicados preservando orden
+        seen = set()
+        result = []
+        for t in combined:
+            if t not in seen:
+                seen.add(t)
+                result.append(t)
+        return result
 
     def on_b_analizar(self):
         if self.analysis_thread and self.analysis_thread.isRunning():
             QMessageBox.warning(self, "Proceso en curso", "Ya hay un análisis en curso. Cancela antes de iniciar otro.")
             return
 
-        tickers = [self.E_Ticker_model.data(self.E_Ticker_model.index(i, 0), Qt.ItemDataRole.DisplayRole) for i in range(self.E_Ticker_model.rowCount())]
+        tickers = self.parse_tickers_from_model()
         if not tickers:
             QMessageBox.warning(self, "Sin tickers", "No hay tickers en E_Ticker para analizar.")
             return
