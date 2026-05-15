@@ -247,15 +247,15 @@ class MainWindow(QMainWindow):
         self.E_Lista_model = QStringListModel()
         self.E_Lista.setModel(self.E_Lista_model)
 
-        self.E_Tracker_model = QStringListModel()
-        self.E_Tracker.setModel(self.E_Tracker_model)
-        self.E_Tracker.setSelectionMode(self.E_Tracker.SelectionMode.SingleSelection)
+        self.E_Ticker_model = QStringListModel()
+        self.E_Ticker.setModel(self.E_Ticker_model)
+        self.E_Ticker.setSelectionMode(self.E_Ticker.SelectionMode.SingleSelection)
 
         self.E_Visor_model = QStringListModel()
         self.E_Visor.setModel(self.E_Visor_model)
 
         self.B_Lista.clicked.connect(self.on_b_lista)
-        self.B_Analizar.clicked.connect(self.on_b_analizar)
+        self.B_Ticker.clicked.connect(self.on_b_analizar)
         self.B_Cancelar.clicked.connect(self.on_b_cancelar)
         self.B_Salir.clicked.connect(self.close)
 
@@ -295,17 +295,17 @@ class MainWindow(QMainWindow):
             return
 
         self.current_tickers = tickers
-        self.E_Tracker_model.setStringList(tickers)
-        self.E_Tracker.setCurrentIndex(self.E_Tracker_model.index(0, 0))
+        self.E_Ticker_model.setStringList(tickers)
+        self.E_Ticker.setCurrentIndex(self.E_Ticker_model.index(0, 0))
 
         self.start_analysis(tickers)
 
     def get_selected_tracker(self):
-        selected_indexes = self.E_Tracker.selectionModel().selectedIndexes()
+        selected_indexes = self.E_Ticker.selectionModel().selectedIndexes()
         if selected_indexes:
             return selected_indexes[0].data()
-        if self.E_Tracker_model.rowCount() > 0:
-            return self.E_Tracker_model.data(self.E_Tracker_model.index(0, 0), Qt.ItemDataRole.DisplayRole)
+        if self.E_Ticker_model.rowCount() > 0:
+            return self.E_Ticker_model.data(self.E_Ticker_model.index(0, 0), Qt.ItemDataRole.DisplayRole)
         return None
 
     def on_b_analizar(self):
@@ -313,19 +313,19 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Proceso en curso", "Ya hay un análisis en curso. Cancela antes de iniciar otro.")
             return
 
-        ticker = self.get_selected_tracker()
-        if not ticker:
-            QMessageBox.warning(self, "Sin ticker", "No hay ningún ticker seleccionado en E_Tracker.")
+        tickers = [self.E_Ticker_model.data(self.E_Ticker_model.index(i, 0), Qt.ItemDataRole.DisplayRole) for i in range(self.E_Ticker_model.rowCount())]
+        if not tickers:
+            QMessageBox.warning(self, "Sin tickers", "No hay tickers en E_Ticker para analizar.")
             return
 
-        self.append_to_visor(f"Iniciando análisis para {ticker}...")
-        self.start_analysis([ticker])
+        self.append_to_visor(f"Iniciando análisis para {len(tickers)} tickers...")
+        self.start_analysis(tickers)
 
     def start_analysis(self, tickers):
         self.clear_visor()
         self.append_to_visor("Iniciando análisis...")
         self.B_Lista.setEnabled(False)
-        self.B_Analizar.setEnabled(False)
+        self.B_Ticker.setEnabled(False)
         self.B_Cancelar.setEnabled(True)
         self.set_table_headers([])
         self.analysis_thread = AnalysisThread(tickers)
@@ -337,23 +337,28 @@ class MainWindow(QMainWindow):
     def on_analysis_finished(self, results):
         self.append_to_visor("Análisis finalizado.")
         self.B_Lista.setEnabled(True)
-        self.B_Analizar.setEnabled(True)
+        self.B_Ticker.setEnabled(True)
         self.B_Cancelar.setEnabled(False)
 
         if not results:
             self.append_to_visor("No se generaron resultados.")
             return
 
-        columns = list(results[0].keys())
+        filtered_results = [row for row in results if int(row.get("Score", 0)) >= 60]
+        if not filtered_results:
+            self.append_to_visor("No se generaron resultados con score >= 60.")
+            return
+
+        columns = list(filtered_results[0].keys())
         self.set_table_headers(columns)
-        self.E_Resultados.setRowCount(len(results))
-        for row_idx, row_data in enumerate(results):
+        self.E_Resultados.setRowCount(len(filtered_results))
+        for row_idx, row_data in enumerate(filtered_results):
             for col_idx, header in enumerate(columns):
                 item = QTableWidgetItem(str(row_data[header]))
                 self.E_Resultados.setItem(row_idx, col_idx, item)
 
         if EXPORT_EXCEL:
-            df = pd.DataFrame(results)
+            df = pd.DataFrame(filtered_results)
             try:
                 df.to_excel(EXCEL_NAME, index=False)
                 self.append_to_visor(f"Excel exportado: {EXCEL_NAME}")
@@ -370,7 +375,7 @@ class MainWindow(QMainWindow):
             self.analysis_thread.wait(1000)
             self.append_to_visor("Se solicitó cancelar el análisis.")
             self.B_Lista.setEnabled(True)
-            self.B_Analizar.setEnabled(True)
+            self.B_Ticker.setEnabled(True)
             self.B_Cancelar.setEnabled(False)
 
 

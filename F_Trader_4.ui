@@ -6,71 +6,27 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>759</width>
-    <height>664</height>
+    <width>1193</width>
+    <height>744</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Mi Trading V1.0</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QLabel" name="L_Ticker">
-    <property name="geometry">
-     <rect>
-      <x>500</x>
-      <y>30</y>
-      <width>58</width>
-      <height>18</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>Ticker</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="B_Lista">
-    <property name="geometry">
-     <rect>
-      <x>20</x>
-      <y>60</y>
-      <width>31</width>
-      <height>31</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>...</string>
-    </property>
-   </widget>
-   <widget class="QListView" name="E_Lista">
-    <property name="geometry">
-     <rect>
-      <x>60</x>
-      <y>60</y>
-      <width>381</width>
-      <height>31</height>
-     </rect>
-    </property>
-   </widget>
-   <widget class="QLabel" name="L_Lista_2">
-    <property name="geometry">
-     <rect>
-      <x>260</x>
-      <y>30</y>
-      <width>58</width>
-      <height>18</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>Lista</string>
-    </property>
-   </widget>
    <widget class="QPushButton" name="B_Cancelar">
     <property name="geometry">
      <rect>
-      <x>540</x>
-      <y>590</y>
+      <x>640</x>
+      <y>640</y>
       <width>88</width>
       <height>34</height>
      </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
     </property>
     <property name="text">
      <string>Cancelar</string>
@@ -79,91 +35,168 @@
    <widget class="QPushButton" name="B_Salir">
     <property name="geometry">
      <rect>
-      <x>660</x>
-      <y>590</y>
+      <x>760</x>
+      <y>640</y>
       <width>88</width>
       <height>34</height>
      </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
     </property>
     <property name="text">
      <string>Salir</string>
     </property>
    </widget>
-   <widget class="QScrollBar" name="verticalScrollBar">
+   <widget class="QGroupBox" name="G_Ticker">
     <property name="geometry">
      <rect>
-      <x>730</x>
-      <y>249</y>
-      <width>20</width>
-      <height>331</height>
+      <x>560</x>
+      <y>20</y>
+      <width>281</width>
+      <height>80</height>
      </rect>
     </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="title">
+     <string>TICKER</string>
+    </property>
+    <widget class="QListView" name="E_Ticker">
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>30</y>
+       <width>111</width>
+       <height>31</height>
+      </rect>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="B_Ticker">
+     <property name="geometry">
+      <rect>
+       <x>160</x>
+       <y>28</y>
+       <width>92</width>
+       <height>34</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>10</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string>Analizar</string>
+     </property>
+    </widget>
    </widget>
-   <widget class="QListView" name="E_Visor">
+   <widget class="QGroupBox" name="G_Lista">
     <property name="geometry">
      <rect>
       <x>20</x>
-      <y>110</y>
-      <width>711</width>
+      <y>20</y>
+      <width>521</width>
+      <height>80</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="title">
+     <string>LISTA</string>
+    </property>
+    <widget class="QListView" name="E_Lista">
+     <property name="geometry">
+      <rect>
+       <x>60</x>
+       <y>30</y>
+       <width>441</width>
+       <height>31</height>
+      </rect>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="B_Lista">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>30</y>
+       <width>31</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>10</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string>...</string>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QGroupBox" name="G_Analisis">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>100</y>
+      <width>521</width>
       <height>101</height>
      </rect>
     </property>
-   </widget>
-   <widget class="QPushButton" name="B_Analizar">
-    <property name="geometry">
-     <rect>
-      <x>620</x>
-      <y>58</y>
-      <width>88</width>
-      <height>30</height>
-     </rect>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
     </property>
-    <property name="text">
-     <string>Analizar</string>
+    <property name="title">
+     <string>ANALISIS </string>
     </property>
+    <widget class="QListView" name="E_Visor">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>20</y>
+       <width>491</width>
+       <height>71</height>
+      </rect>
+     </property>
+    </widget>
    </widget>
-   <widget class="QTableWidget" name="E_Resultados">
-    <property name="geometry">
-     <rect>
-      <x>20</x>
-      <y>250</y>
-      <width>711</width>
-      <height>331</height>
-     </rect>
-    </property>
-   </widget>
-   <widget class="QListView" name="E_Tracker">
-    <property name="geometry">
-     <rect>
-      <x>470</x>
-      <y>60</y>
-      <width>111</width>
-      <height>31</height>
-     </rect>
-    </property>
-   </widget>
-   <widget class="QLabel" name="L_Resutados">
+   <widget class="QGroupBox" name="G_Resultados">
     <property name="geometry">
      <rect>
       <x>20</x>
-      <y>220</y>
-      <width>81</width>
-      <height>18</height>
+      <y>210</y>
+      <width>1151</width>
+      <height>411</height>
      </rect>
     </property>
-    <property name="text">
-     <string>Resusltados</string>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
     </property>
-   </widget>
-   <widget class="QScrollBar" name="verticalScrollBar_2">
-    <property name="geometry">
-     <rect>
-      <x>730</x>
-      <y>110</y>
-      <width>16</width>
-      <height>101</height>
-     </rect>
+    <property name="title">
+     <string>RESULTADOS</string>
     </property>
+    <widget class="QTableWidget" name="E_Resultados">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>20</y>
+       <width>1121</width>
+       <height>371</height>
+      </rect>
+     </property>
+    </widget>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -171,7 +204,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>759</width>
+     <width>1193</width>
      <height>21</height>
     </rect>
    </property>

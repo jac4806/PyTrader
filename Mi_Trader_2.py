@@ -1,4 +1,6 @@
 # =========================================================
+#   Mi Trader_2.py | V03 | 08/05/2026
+# =========================================================
 # SMART MONEY / CFI SCREENER
 #
 # Analiza empresas usando:
@@ -9,7 +11,6 @@
 # - Divergencias
 #
 # Exporta resultados a Excel.
-# =========================================================
 # =========================================================
 # INSTALAR LIBRERÍAS
 # =========================================================
@@ -39,38 +40,85 @@ EXCEL_NAME = "SmartMoney_Screener.xlsx"
 DELAY_BETWEEN_REQUESTS = 1
 
 # Archivo TXT con tickers
-TXT_FILE = "Magnificas.txt"
+TXT_FILE = "Mi_Lista.txt"
+
+# =========================================================
+# FUNCIONES AUXILIARES
+# =========================================================
+
+def download_data_safe(ticker, period="1y", interval="1d", max_retries=3):
+    """
+    Descarga datos de yfinance con manejo de errores para tickers internacionales.
+    """
+    for attempt in range(max_retries):
+        try:
+            stock_data = yf.download(
+                ticker,
+                period=period,
+                interval=interval,
+                auto_adjust=True,
+                progress=False,
+                group_by="column"
+            )
+            
+            # Corregir MultiIndex si existe
+            if isinstance(stock_data.columns, pd.MultiIndex):
+                stock_data.columns = stock_data.columns.get_level_values(0)
+            
+            # Limpiar NaN
+            stock_data.dropna(inplace=True)
+            
+            if stock_data.empty:
+                return None, f"Sin datos disponibles para {ticker}"
+            
+            return stock_data, None
+        
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(2)  # Esperar antes de reintentar
+            else:
+                return None, f"Error después de {max_retries} intentos: {str(e)}"
 
 # =========================================================
 # CARGAR TICKERS DESDE TXT
 # =========================================================
 
-with open(TXT_FILE, "r", encoding="utf-8") as file:
+def load_tickers(filename):
+    """Carga y limpia tickers desde archivo TXT, soportando sufijos internacionales."""
+    try:
+        with open(filename, "r", encoding="utf-8") as file:
+            content = file.read()
+    except FileNotFoundError:
+        print(f"ERROR: Archivo '{filename}' no encontrado")
+        return []
+    
+    # Prefijos antiguos a remover (para compatibilidad)
+    prefixes = ["NASDAQ:", "NYSE:", "AMEX:"]
+    tickers = set()
+    
+    for item in content.split(","):
+        item = item.strip()
+        if item:
+            # Remover prefijos antiguos
+            for prefix in prefixes:
+                item = item.replace(prefix, "")
+            # Normalizar a mayúsculas y aceptar sufijos (ej. BBVA.MC)
+            item = item.upper().replace(":", ".")  # Convertir : a . si hay
+            tickers.add(item)
+    
+    return sorted(list(tickers))
 
-    content = file.read()
+TICKERS = load_tickers(TXT_FILE)
 
-raw_tickers = content.split(",")
-
-TICKERS = sorted(list(set(
-
-    ticker
-    .replace("NASDAQ:", "")
-    .replace("NYSE:", "")
-    .replace("AMEX:", "")
-    .strip()
-
-    for ticker in raw_tickers
-
-    if ticker.strip()
-
-)))
-
-print("\n")
-print("=" * 80)
-print("TICKERS CARGADOS")
-print("=" * 80)
-print(TICKERS)
-print("=" * 80)
+if TICKERS:
+    print("\n" + "=" * 80)
+    print(f"TICKERS CARGADOS ({len(TICKERS)}): {', '.join(TICKERS)}")
+    print("=" * 80)
+else:
+    print("\n" + "=" * 80)
+    print("✗ NO SE CARGARON TICKERS")
+    print("=" * 80)
+    exit()
 
 # =========================================================
 # FUNCIÓN PRINCIPAL
@@ -79,35 +127,21 @@ print("=" * 80)
 
 def calculate_indicators(dataframe):
     """
-    Calcula indicadores Smart Money,
-    CFI, Flow, Tendencia y señales.
+    Calcula indicadores Smart Money, CFI, Flow, Tendencia y señales.
     """
-
     data = dataframe.copy()
 
     # =====================================================
     # CFI DIARIO
     # =====================================================
-
-    data["cfi"] = (
-        data["Volume"] *
-        (data["Close"] - data["Open"])
-    ).ewm(span=20, adjust=False).mean()
-
-    data["cfi_ma"] = (
-        data["cfi"]
-        .ewm(span=20, adjust=False)
-        .mean()
-    )
-
-    data["cfi_up"] = (
-        data["cfi"] > data["cfi_ma"]
-    )
+    cfi_raw = data["Volume"] * (data["Close"] - data["Open"])
+    data["cfi"] = cfi_raw.ewm(span=20, adjust=False).mean()
+    data["cfi_ma"] = data["cfi"].ewm(span=20, adjust=False).mean()
+    data["cfi_up"] = data["cfi"] > data["cfi_ma"]
 
     # =====================================================
     # CFI SEMANAL
     # =====================================================
-
     weekly = data.resample("W").agg({
         "Open": "first",
         "High": "max",
@@ -116,84 +150,39 @@ def calculate_indicators(dataframe):
         "Volume": "sum"
     })
 
-    weekly["cfi_w"] = (
-        weekly["Volume"] *
-        (weekly["Close"] - weekly["Open"])
-    ).ewm(span=20, adjust=False).mean()
+    weekly_cfi_raw = weekly["Volume"] * (weekly["Close"] - weekly["Open"])
+    weekly["cfi_w"] = weekly_cfi_raw.ewm(span=20, adjust=False).mean()
+    weekly["cfi_w_ma"] = weekly["cfi_w"].ewm(span=20, adjust=False).mean()
+    weekly["cfi_w_up"] = weekly["cfi_w"] > weekly["cfi_w_ma"]
 
-    weekly["cfi_w_ma"] = (
-        weekly["cfi_w"]
-        .ewm(span=20, adjust=False)
-        .mean()
-    )
-
-    weekly["cfi_w_up"] = (
-        weekly["cfi_w"] >
-        weekly["cfi_w_ma"]
-    )
-
-    data["cfi_w_up"] = (
-        weekly["cfi_w_up"]
-        .reindex(data.index, method="ffill")
-    )
+    # Alinear datos semanales con diarios (usar ffill en lugar de deprecated reindex)
+    data["cfi_w_up"] = weekly["cfi_w_up"].reindex(data.index, fill_value=False).ffill()
 
     # =====================================================
     # VOLUMEN
     # =====================================================
-
-    data["vol_ma"] = (
-        data["Volume"]
-        .rolling(50)
-        .mean()
-    )
-
-    data["vol_strong"] = (
-        data["Volume"] >
-        data["vol_ma"]
-    )
+    data["vol_ma"] = data["Volume"].rolling(50).mean()
+    data["vol_strong"] = data["Volume"] > data["vol_ma"]
 
     # =====================================================
     # FLOW / SMART MONEY
     # =====================================================
-
-    spread = np.maximum(
-        data["High"] - data["Low"],
-        0.0001
-    )
-
-    data["close_pos"] = (
-        (data["Close"] - data["Low"]) /
-        spread
-    )
-
-    data["strength"] = (
-        2 * data["close_pos"] - 1
-    )
-
-    data["flow"] = np.where(
-        data["vol_strong"],
-        data["strength"] * data["Volume"],
-        0
-    )
-
-    data["flow_smooth"] = (
-        data["flow"]
-        .ewm(span=5, adjust=False)
-        .mean()
-    )
+    spread = np.maximum(data["High"] - data["Low"], 0.0001)
+    data["close_pos"] = (data["Close"] - data["Low"]) / spread
+    data["strength"] = 2 * data["close_pos"] - 1
+    data["flow"] = np.where(data["vol_strong"], data["strength"] * data["Volume"], 0)
+    data["flow_smooth"] = data["flow"].ewm(span=5, adjust=False).mean()
 
     # =====================================================
     # ACUMULACIÓN / DISTRIBUCIÓN
     # =====================================================
-
     data["accumulation"] = (
-        (data["vol_strong"]) &
+        data["vol_strong"] &
         (data["close_pos"] > 0.6) &
         (data["Close"] >= data["Open"])
     )
-
     data["distribution"] = (
-        (data["vol_strong"]) &
+        data["vol_strong"] &
         (data["close_pos"] < 0.4) &
         (data["Close"] <= data["Open"])
     )
@@ -201,25 +190,9 @@ def calculate_indicators(dataframe):
     # =====================================================
     # TENDENCIA
     # =====================================================
-
-    data["ema21"] = (
-        data["Close"]
-        .ewm(span=21, adjust=False)
-        .mean()
-    )
-
-    data["sma50"] = (
-        data["Close"]
-        .rolling(50)
-        .mean()
-    )
-
-    data["sma200"] = (
-        data["Close"]
-        .rolling(200)
-        .mean()
-    )
-
+    data["ema21"] = data["Close"].ewm(span=21, adjust=False).mean()
+    data["sma50"] = data["Close"].rolling(50).mean()
+    data["sma200"] = data["Close"].rolling(200).mean()
     data["trend_up"] = (
         (data["Close"] > data["ema21"]) &
         (data["ema21"] > data["sma50"]) &
@@ -229,108 +202,53 @@ def calculate_indicators(dataframe):
     # =====================================================
     # DIVERGENCIAS
     # =====================================================
-
     data["bull_div"] = (
         (data["Low"].shift(5) < data["Low"].shift(10)) &
-        (
-            data["flow_smooth"].shift(5) >
-            data["flow_smooth"].shift(10)
-        )
+        (data["flow_smooth"].shift(5) > data["flow_smooth"].shift(10))
     )
-
     data["bear_div"] = (
         (data["High"].shift(5) > data["High"].shift(10)) &
-        (
-            data["flow_smooth"].shift(5) <
-            data["flow_smooth"].shift(10)
-        )
+        (data["flow_smooth"].shift(5) < data["flow_smooth"].shift(10))
     )
 
     # =====================================================
     # SEÑALES
     # =====================================================
-
     data["buy_pro"] = (
         data["trend_up"] &
         data["cfi_up"] &
-        (
-            (data["flow_smooth"] > 0) |
-            (data["accumulation"])
-        )
+        ((data["flow_smooth"] > 0) | data["accumulation"])
     )
-
-    data["buy_early"] = (
-        data["bull_div"] &
-        (data["flow_smooth"] > 0)
-    )
-
-    data["sell"] = (
-        data["distribution"] |
-        data["bear_div"] |
-        (data["flow_smooth"] < 0)
-    )
+    data["buy_early"] = data["bull_div"] & (data["flow_smooth"] > 0)
+    data["sell"] = data["distribution"] | data["bear_div"] | (data["flow_smooth"] < 0)
 
     # =====================================================
     # LIMPIAR NaN BOOLEANOS
     # =====================================================
-
     bool_cols = [
-        "cfi_up",
-        "cfi_w_up",
-        "vol_strong",
-        "accumulation",
-        "distribution",
-        "trend_up",
-        "bull_div",
-        "bear_div",
-        "buy_pro",
-        "buy_early",
-        "sell"
+        "cfi_up", "cfi_w_up", "vol_strong", "accumulation",
+        "distribution", "trend_up", "bull_div", "bear_div",
+        "buy_pro", "buy_early", "sell"
     ]
-
-    for col in bool_cols:
-
-        data[col] = data[col].fillna(False)
+    data[bool_cols] = data[bool_cols].fillna(False)
 
     # =====================================================
     # SCORE
     # =====================================================
-
-    data["score"] = 0
-
-    trend_mask = data["trend_up"]
-    cfi_mask = data["cfi_up"]
-    cfiw_mask = data["cfi_w_up"]
-    acc_mask = data["accumulation"]
-    flow_mask = (data["flow_smooth"] > 0).fillna(False)
-
-    data.loc[trend_mask, "score"] += 25
-    data.loc[cfi_mask, "score"] += 25
-    data.loc[cfiw_mask, "score"] += 20
-    data.loc[acc_mask, "score"] += 15
-    data.loc[flow_mask, "score"] += 15
+    data["score"] = (
+        (data["trend_up"].astype(int) * 25) +
+        (data["cfi_up"].astype(int) * 25) +
+        (data["cfi_w_up"].astype(int) * 20) +
+        (data["accumulation"].astype(int) * 15) +
+        ((data["flow_smooth"] > 0).astype(int) * 15)
+    )
 
     # =====================================================
     # TEXTO SEÑAL
     # =====================================================
-
-    conditions = [
-        data["buy_pro"],
-        data["buy_early"],
-        data["sell"]
-    ]
-
-    choices = [
-        "COMPRA FUERTE",
-        "COMPRA TEMPRANA",
-        "VENTA"
-    ]
-
-    data["signal"] = np.select(
-        conditions,
-        choices,
-        default="ESPERA"
-    )
+    conditions = [data["buy_pro"], data["buy_early"], data["sell"]]
+    choices = ["COMPRA FUERTE", "COMPRA TEMPRANA", "VENTA"]
+    data["signal"] = np.select(conditions, choices, default="ESPERA")
 
     return data
 
@@ -342,146 +260,47 @@ def calculate_indicators(dataframe):
 results = []
 
 for ticker in TICKERS:
-
+    print(f"\nAnalizando {ticker}...")
+    
+    # Descargar datos con manejo de errores
+    stock_data, error_msg = download_data_safe(ticker, period=PERIOD, interval=INTERVAL)
+    
+    if stock_data is None:
+        print(f"⚠️  {ticker}: {error_msg}")
+        continue
+    
     try:
-
-        print(f"\nAnalizando {ticker}...")
-
-        # =================================================
-        # DESCARGAR DATOS
-        # =================================================
-
-        stock_data = yf.download(
-            ticker,
-            period=PERIOD,
-            interval=INTERVAL,
-            auto_adjust=True,
-            progress=False,
-            group_by="column"
-        )
-
-        # =================================================
-        # CORREGIR MULTIINDEX
-        # =================================================
-
-        if isinstance(stock_data.columns, pd.MultiIndex):
-
-            stock_data.columns = (
-                stock_data.columns.get_level_values(0)
-            )
-
-        # =================================================
-        # LIMPIAR DATOS
-        # =================================================
-
-        stock_data.dropna(inplace=True)
-
-        if stock_data.empty:
-
-            print(f"Sin datos para {ticker}")
-            continue
-
-        # =================================================
-        # CALCULAR INDICADORES
-        # =================================================
-
+        # Calcular indicadores
         stock_data = calculate_indicators(stock_data)
-
-        # =================================================
-        # ÚLTIMO REGISTRO
-        # =================================================
-
         last = stock_data.iloc[-1]
 
-        # =================================================
-        # GUARDAR RESULTADOS
-        # =================================================
-
+        # Guardar resultados
         results.append({
-
             "Ticker": ticker,
-
-            "Precio": round(
-                float(last["Close"]),
-                2
-            ),
-
+            "Precio": round(float(last["Close"]), 2),
             "Signal": str(last["signal"]),
-
             "Score": int(last["score"]),
-
-            "Trend": (
-                "SI"
-                if bool(last["trend_up"])
-                else "NO"
-            ),
-
-            "CFI Diario": (
-                "FUERTE"
-                if bool(last["cfi_up"])
-                else "DEBIL"
-            ),
-
-            "CFI Semanal": (
-                "FUERTE"
-                if bool(last["cfi_w_up"])
-                else "DEBIL"
-            ),
-
-            "Flow": (
-                "COMPRANDO"
-                if float(last["flow_smooth"]) > 0
-                else "VENDIENDO"
-            ),
-
+            "Trend": "SI" if last["trend_up"] else "NO",
+            "CFI Diario": "FUERTE" if last["cfi_up"] else "DEBIL",
+            "CFI Semanal": "FUERTE" if last["cfi_w_up"] else "DEBIL",
+            "Flow": "COMPRANDO" if last["flow_smooth"] > 0 else "VENDIENDO",
             "Smart Money": (
-
-                "ACUMULANDO"
-
-                if bool(last["accumulation"])
-
-                else
-
-                "DISTRIBUYENDO"
-
-                if bool(last["distribution"])
-
-                else
-
-                "NEUTRO"
+                "ACUMULANDO" if last["accumulation"]
+                else "DISTRIBUYENDO" if last["distribution"]
+                else "NEUTRO"
             ),
-
-            "Vol Relativo": round(
-
-                float(last["Volume"]) /
-                float(last["vol_ma"]),
-
-                2
-
-            ) if float(last["vol_ma"]) > 0 else 0,
-
-            "Fecha": datetime.now().strftime(
-                "%Y-%m-%d %H:%M"
-            )
+            "Vol Relativo": (
+                round(float(last["Volume"]) / float(last["vol_ma"]), 2)
+                if float(last["vol_ma"]) > 0 else 0
+            ),
+            "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M")
         })
 
-        print(f"{ticker} OK")
-
-        # =================================================
-        # RETRASO ENTRE CONSULTAS
-        # =================================================
-
+        print(f"✓ {ticker} OK")
         time.sleep(DELAY_BETWEEN_REQUESTS)
 
-    except (
-        ValueError,
-        KeyError,
-        TypeError,
-        IndexError
-    ) as error:
-
-        print(f"\nERROR EN {ticker}")
-        print(error)
+    except (ValueError, KeyError, TypeError, IndexError, OSError) as error:
+        print(f"✗ ERROR procesando {ticker}: {type(error).__name__}: {str(error)[:60]}")
 
 # =========================================================
 # CREAR DATAFRAME
@@ -494,88 +313,40 @@ results_df = pd.DataFrame(results)
 # =========================================================
 
 if not results_df.empty and "Score" in results_df.columns:
-
-    # =====================================================
-    # ORDENAR
-    # =====================================================
-
-    results_df = results_df.sort_values(
-        by="Score",
-        ascending=False
-    )
-
-    # =====================================================
-    # MOSTRAR RESULTADOS
-    # =====================================================
-
-    print("\n")
-    print("=" * 100)
+    
+    # Ordenar por Score
+    results_df = results_df.sort_values(by="Score", ascending=False)
+    
+    # Mostrar resultados
+    print("\n" + "=" * 100)
     print(results_df)
     print("=" * 100)
-
-    # =====================================================
-    # EXPORTAR EXCEL
-    # =====================================================
-
+    
+    # Exportar Excel si está habilitado
     if EXPORT_EXCEL:
-
-        with pd.ExcelWriter(
-            EXCEL_NAME,
-            engine="openpyxl"
-        ) as writer:
-
+        with pd.ExcelWriter(EXCEL_NAME, engine="openpyxl") as writer:
             results_df.to_excel(
                 writer,
                 sheet_name="SmartMoney",
                 index=False
             )
-
+            
+            # Auto-ajustar ancho de columnas
             worksheet = writer.sheets["SmartMoney"]
-
-            # =================================================
-            # AJUSTAR ANCHO COLUMNAS
-            # =================================================
-
-            for column in worksheet.columns:
-
-                max_length = 0
-
-                column_letter = (
-                    column[0].column_letter
-                )
-
-                for cell in column:
-
-                    try:
-
-                        if len(str(cell.value)) > max_length:
-
-                            max_length = len(
-                                str(cell.value)
-                            )
-
-                    except (
-                        ValueError,
-                        TypeError
-                    ):
-                        pass
-
-                adjusted_width = max_length + 3
-
+            for idx, col in enumerate(results_df.columns, 1):
+                max_length = max(
+                    len(str(val)) for val in results_df[col].astype(str)
+                ) + 2
                 worksheet.column_dimensions[
-                    column_letter
-                ].width = adjusted_width
-
-        print("\n")
-        print("=" * 80)
-        print(f"Excel exportado: {EXCEL_NAME}")
+                    chr(64 + idx)
+                ].width = min(max_length, 50)
+        
+        print("\n" + "=" * 80)
+        print(f"✓ Excel exportado: {EXCEL_NAME}")
         print("=" * 80)
 
 else:
-
-    print("\n")
+    print("\n" + "=" * 80)
+    print("✗ NO SE GENERARON RESULTADOS")
+    print("Revisa: conexión, archivo de tickers o disponibilidad en Yahoo Finance")
     print("=" * 80)
-    print("NO SE GENERARON RESULTADOS")
-    print("Revisa conexión, tickers o Yahoo Finance")
-    print("=" * 80)
-    
