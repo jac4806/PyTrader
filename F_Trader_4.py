@@ -1,3 +1,5 @@
+"""Smart Money stock screener with a PyQt6 user interface."""
+
 #*******************************************************************
 #
 #               18/05/2026
@@ -8,8 +10,14 @@ import time
 from datetime import datetime
 
 from PyQt6 import uic
-from PyQt6.QtCore import Qt, QEvent, QThread, pyqtSignal, QStringListModel
-from PyQt6.QtWidgets import (
+from PyQt6.QtCore import (  # pylint: disable=no-name-in-module
+    Qt,
+    QEvent,
+    QThread,
+    pyqtSignal,
+    QStringListModel,
+)
+from PyQt6.QtWidgets import (  # pylint: disable=no-name-in-module
     QApplication,
     QMainWindow,
     QFileDialog,
@@ -62,7 +70,10 @@ def download_data_safe(ticker, period="1y", interval="1d", max_retries=3):
         for attempt in range(max_retries):
             try:
                 # Silenciar la salida de yfinance
-                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                with (
+                    contextlib.redirect_stdout(io.StringIO()),
+                    contextlib.redirect_stderr(io.StringIO()),
+                ):
                     stock_data = yf.download(
                         sym,
                         period=period,
@@ -446,7 +457,12 @@ class MainWindow(QMainWindow):
         self.E_Visor_model.setStringList([])
 
     def on_b_lista(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Seleccionar Archivo de Tickers", "", "Archivos TXT (*.txt)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar Archivo de Tickers",
+            "",
+            "Archivos TXT (*.txt)",
+        )
         if not file_path:
             return
 
@@ -468,7 +484,10 @@ class MainWindow(QMainWindow):
             if selected_indexes:
                 return selected_indexes[0].data()
             if self.E_Ticker_model and self.E_Ticker_model.rowCount() > 0:
-                return self.E_Ticker_model.data(self.E_Ticker_model.index(0, 0), Qt.ItemDataRole.DisplayRole)
+                return self.E_Ticker_model.data(
+                    self.E_Ticker_model.index(0, 0),
+                    Qt.ItemDataRole.DisplayRole,
+                )
             return None
         else:
             text = self.E_Ticker.toPlainText().strip()
@@ -481,7 +500,13 @@ class MainWindow(QMainWindow):
         # Extrae y normaliza tickers desde el modelo editable de E_Ticker
         combined = []
         if self._ticker_is_model and self.E_Ticker_model:
-            raw_items = [self.E_Ticker_model.data(self.E_Ticker_model.index(i, 0), Qt.ItemDataRole.DisplayRole) for i in range(self.E_Ticker_model.rowCount())]
+            raw_items = [
+                self.E_Ticker_model.data(
+                    self.E_Ticker_model.index(i, 0),
+                    Qt.ItemDataRole.DisplayRole,
+                )
+                for i in range(self.E_Ticker_model.rowCount())
+            ]
             iterator = raw_items
         else:
             text = self.E_Ticker.toPlainText()
@@ -511,7 +536,11 @@ class MainWindow(QMainWindow):
 
     def on_b_analizar(self):
         if self.analysis_thread and self.analysis_thread.isRunning():
-            QMessageBox.warning(self, "Proceso en curso", "Ya hay un análisis en curso. Cancela antes de iniciar otro.")
+            QMessageBox.warning(
+                self,
+                "Proceso en curso",
+                "Ya hay un análisis en curso. Cancela antes de iniciar otro.",
+            )
             return
 
         tickers = self.parse_tickers_from_model()
@@ -606,7 +635,11 @@ class MainWindow(QMainWindow):
 
         txt_files = sorted(Path(folder_path).glob("*.txt"))
         if not txt_files:
-            QMessageBox.warning(self, "Advertencia", "No se encontraron archivos .txt en la carpeta seleccionada.")
+            QMessageBox.warning(
+                self,
+                "Advertencia",
+                "No se encontraron archivos .txt en la carpeta seleccionada.",
+            )
             return
 
         self.E_Lista_model.setStringList([folder_path])
@@ -619,7 +652,11 @@ class MainWindow(QMainWindow):
             self.append_to_visor(f"Cargando lista: {txt_file.name} ({len(tickers)} tickers)")
 
         if not all_tickers:
-            QMessageBox.warning(self, "Advertencia", "No se encontraron tickers válidos en las listas de la carpeta.")
+            QMessageBox.warning(
+                self,
+                "Advertencia",
+                "No se encontraron tickers válidos en las listas de la carpeta.",
+            )
             return
 
         # Eliminar duplicados preservando orden
