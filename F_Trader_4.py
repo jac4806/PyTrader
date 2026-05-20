@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 
 from PyQt6 import uic
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QStringListModel
+from PyQt6.QtCore import Qt, QEvent, QThread, pyqtSignal, QStringListModel
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -290,6 +290,7 @@ class AnalysisThread(QThread):
         for ticker in self.tickers:
             if self._stop_requested:
                 self.progress.emit("Análisis cancelado.")
+                self.finished.emit(results)
                 return
 
             self.progress.emit(f"Analizando {ticker}...")
@@ -297,6 +298,7 @@ class AnalysisThread(QThread):
 
             if self._stop_requested:
                 self.progress.emit("Análisis cancelado.")
+                self.finished.emit(results)
                 return
 
             if stock_data is None:
@@ -380,19 +382,29 @@ class MainWindow(QMainWindow):
         self.B_Carpeta.clicked.connect(self.on_b_carpeta)
         self.B_Ticker.clicked.connect(self.on_b_analizar)
         self.B_Cancelar.clicked.connect(self.on_b_cancelar)
-        self.B_LimpiarResultados.clicked.connect(self.on_b_clear_results)
+        self.B_Borrar = getattr(self, "B_Borrar", None)
+        if self.B_Borrar is None:
+            self.B_Borrar = self.B_LimpiarResultados
+        self.B_Borrar.setText("Borrar")
+        self.B_Borrar.clicked.connect(self.on_b_clear_results)
         self.B_Salir.clicked.connect(self.close)
+
+        self.E_Ticker.installEventFilter(self)
+        self.E_Resultados.setSortingEnabled(True)
+        self.E_Resultados.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
         self.analysis_thread = None
         self.current_tickers = []
         self.cumulative_results = []
-        self.analysis_clear_results = True
+        self.analysis_clear_results = False
         self.set_table_headers([])
 
     def set_table_headers(self, headers):
+        self.E_Resultados.setSortingEnabled(False)
         if not headers:
             self.E_Resultados.setColumnCount(0)
             self.E_Resultados.setRowCount(0)
+            self.E_Resultados.setSortingEnabled(True)
             return
         self.E_Resultados.setColumnCount(len(headers))
         self.E_Resultados.setHorizontalHeaderLabels(headers)
@@ -401,8 +413,28 @@ class MainWindow(QMainWindow):
         try:
             header = self.E_Resultados.horizontalHeader()
             header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            score_col = headers.index("Score")
+            header.setSortIndicator(score_col, Qt.SortOrder.DescendingOrder)
         except Exception:
             pass
+        self.E_Resultados.setSortingEnabled(True)
+
+    def clear_ticker_input(self):
+        try:
+            self._suppress_e_ticker_edit_signal = True
+            if self._ticker_is_model and self.E_Ticker_model is not None:
+                self.E_Ticker_model.setStringList([])
+            elif isinstance(self.E_Ticker, QTextEdit):
+                self.E_Ticker.clear()
+        finally:
+            self._suppress_e_ticker_edit_signal = False
+
+    def eventFilter(self, source, event):
+        if source is self.E_Ticker and event.type() == QEvent.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.on_b_analizar()
+                return True
+        return super().eventFilter(source, event)
 
     def append_to_visor(self, message):
         current = self.E_Visor_model.stringList()
@@ -427,20 +459,8 @@ class MainWindow(QMainWindow):
             return
 
         self.current_tickers = tickers
-        # Evitar que los cambios programáticos disparen la limpieza de E_Lista
-        self._suppress_e_ticker_edit_signal = True
-        if self._ticker_is_model:
-            self.E_Ticker_model.setStringList(tickers)
-            try:
-                self.E_Ticker.setCurrentIndex(self.E_Ticker_model.index(0, 0))
-            except Exception:
-                pass
-        else:
-            # poner cada ticker en una línea del QTextEdit
-            self.E_Ticker.setPlainText("\n".join(tickers))
-        self._suppress_e_ticker_edit_signal = False
-
-        self.start_analysis(tickers)
+        self.clear_ticker_input()
+        self.start_analysis(tickers, clear_results=False)
 
     def get_selected_tracker(self):
         if self._ticker_is_model:
@@ -500,16 +520,15 @@ class MainWindow(QMainWindow):
             return
 
         self.append_to_visor(f"Iniciando análisis para {len(tickers)} tickers...")
-        self.start_analysis(tickers)
+        self.clear_ticker_input()
+        self.start_analysis(tickers, clear_results=False)
 
-    def start_analysis(self, tickers, clear_results=True):
+    def start_analysis(self, tickers, clear_results=False):
         self.analysis_clear_results = clear_results
         if clear_results:
-            self.clear_visor()
-            self.append_to_visor("Iniciando análisis...")
+            self.cumulative_results = []
             self.set_table_headers([])
-        else:
-            self.append_to_visor("Iniciando análisis sin borrar resultados previos...")
+        self.append_to_visor("Iniciando análisis...")
 
         self.B_Lista.setEnabled(False)
         self.B_Ticker.setEnabled(False)
@@ -547,24 +566,27 @@ class MainWindow(QMainWindow):
             self.append_to_visor("No se generaron resultados.")
             return
 
-        sorted_results = sorted(results, key=lambda r: int(r.get("Score", 0)), reverse=True)
-        filtered_results = [row for row in sorted_results if int(row.get("Score", 0)) >= 60]
-        if self.analysis_clear_results:
-            self.cumulative_results = filtered_results
-        else:
-            self.cumulative_results.extend(filtered_results)
+        if results:
+            self.cumulative_results.extend(results)
 
         if not self.cumulative_results:
-            self.append_to_visor("No se generaron resultados con score >= 60.")
+            self.append_to_visor("No hay resultados para mostrar.")
             return
 
         columns = list(self.cumulative_results[0].keys())
         self.set_table_headers(columns)
+        self.E_Resultados.setSortingEnabled(False)
         self.E_Resultados.setRowCount(len(self.cumulative_results))
+        numeric_columns = {"Precio", "Score", "Vol Relativo"}
         for row_idx, row_data in enumerate(self.cumulative_results):
             for col_idx, header in enumerate(columns):
-                item = QTableWidgetItem(str(row_data.get(header, "")))
+                value = row_data.get(header, "")
+                item = QTableWidgetItem(str(value))
+                if header in numeric_columns:
+                    item.setData(Qt.ItemDataRole.EditRole, value)
                 self.E_Resultados.setItem(row_idx, col_idx, item)
+        self.E_Resultados.setSortingEnabled(True)
+        self.E_Resultados.sortItems(columns.index("Score"), Qt.SortOrder.DescendingOrder)
 
         if EXPORT_EXCEL:
             df = pd.DataFrame(self.cumulative_results)
@@ -609,17 +631,7 @@ class MainWindow(QMainWindow):
                 unique_tickers.append(ticker)
 
         self.current_tickers = unique_tickers
-        self._suppress_e_ticker_edit_signal = True
-        if self._ticker_is_model and self.E_Ticker_model is not None:
-            self.E_Ticker_model.setStringList(unique_tickers)
-            try:
-                self.E_Ticker.setCurrentIndex(self.E_Ticker_model.index(0, 0))
-            except Exception:
-                pass
-        else:
-            self.E_Ticker.setPlainText("\n".join(unique_tickers))
-        self._suppress_e_ticker_edit_signal = False
-
+        self.clear_ticker_input()
         self.start_analysis(unique_tickers, clear_results=False)
 
     def on_b_clear_results(self):
