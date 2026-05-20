@@ -6,21 +6,39 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1193</width>
+    <width>1189</width>
     <height>744</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Mi Trading V1.0</string>
+   <string>Mi Trading V1.5</string>
   </property>
   <widget class="QWidget" name="centralwidget">
+   <widget class="QPushButton" name="B_LimpiarResultados">
+    <property name="geometry">
+     <rect>
+      <x>770</x>
+      <y>640</y>
+      <width>100</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>Limpiar</string>
+    </property>
+   </widget>
    <widget class="QPushButton" name="B_Cancelar">
     <property name="geometry">
      <rect>
-      <x>640</x>
+      <x>920</x>
       <y>640</y>
-      <width>88</width>
-      <height>34</height>
+      <width>100</width>
+      <height>35</height>
      </rect>
     </property>
     <property name="font">
@@ -35,10 +53,10 @@
    <widget class="QPushButton" name="B_Salir">
     <property name="geometry">
      <rect>
-      <x>760</x>
+      <x>1070</x>
       <y>640</y>
-      <width>88</width>
-      <height>34</height>
+      <width>100</width>
+      <height>35</height>
      </rect>
     </property>
     <property name="font">
@@ -116,9 +134,9 @@
     <widget class="QListView" name="E_Lista">
      <property name="geometry">
       <rect>
-       <x>60</x>
+       <x>90</x>
        <y>30</y>
-       <width>441</width>
+       <width>411</width>
        <height>31</height>
       </rect>
      </property>
@@ -139,6 +157,24 @@
      </property>
      <property name="text">
       <string>...</string>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="B_Carpeta">
+     <property name="geometry">
+      <rect>
+       <x>50</x>
+       <y>30</y>
+       <width>31</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>10</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string>Dir</string>
      </property>
     </widget>
    </widget>
@@ -204,8 +240,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1193</width>
-     <height>21</height>
+     <width>1189</width>
+     <height>30</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuOpciones">

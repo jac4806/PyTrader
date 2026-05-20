@@ -1,3 +1,8 @@
+#*******************************************************************
+#
+#               18/05/2026
+#
+#******************************************************************
 import sys
 import time
 from datetime import datetime
@@ -21,6 +26,7 @@ import pandas as pd
 import yfinance as yf
 import io
 import contextlib
+from pathlib import Path
 
 # =========================================================
 # CONFIGURACIÓN
@@ -42,33 +48,71 @@ TXT_FILE = "Mi_Lista.txt"
 
 
 def download_data_safe(ticker, period="1y", interval="1d", max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            # yfinance sometimes prints errors to stdout/stderr; silenciamos esa salida
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                stock_data = yf.download(
-                    ticker,
-                    period=period,
-                    interval=interval,
-                    auto_adjust=True,
-                    progress=False,
-                    group_by="column",
-                )
+    """
+    Intenta descargar datos con yfinance. Si no se encuentran datos para el ticker
+    sin sufijo de exchange, intenta añadir sufijos comunes de exchanges europeos
+    para permitir analizar acciones de Europa.
+    """
+    # Sufijos comunes para exchanges europeos (se intentan si no vienen en el ticker)
+    eu_suffixes = [
+        ".PA", ".L", ".DE", ".F", ".AS", ".MI", ".HE", ".ST", ".SW",
+        ".BME", ".XETR", ".ASX", ".ENX", ".FSE", ".LSE", ".SIX",
+    ]
 
-            if isinstance(stock_data.columns, pd.MultiIndex):
-                stock_data.columns = stock_data.columns.get_level_values(0)
+    def try_download(sym):
+        for attempt in range(max_retries):
+            try:
+                # Silenciar la salida de yfinance
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    stock_data = yf.download(
+                        sym,
+                        period=period,
+                        interval=interval,
+                        auto_adjust=True,
+                        progress=False,
+                        group_by="column",
+                    )
 
-            stock_data.dropna(inplace=True)
-            if stock_data.empty:
-                return None, f"Sin datos disponibles para {ticker}"
+                if isinstance(stock_data.columns, pd.MultiIndex):
+                    stock_data.columns = stock_data.columns.get_level_values(0)
 
-            return stock_data, None
+                stock_data.dropna(inplace=True)
+                if stock_data.empty:
+                    return None, None
 
-        except Exception as e:
-            if attempt < max_retries - 1:
-                time.sleep(2)
-            else:
-                return None, f"Error después de {max_retries} intentos: {str(e)}"
+                return stock_data, None
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                else:
+                    return None, f"Error después de {max_retries} intentos: {str(e)}"
+
+    # 1) Intentar con el ticker tal cual
+    data, err = try_download(ticker)
+    if data is not None:
+        return data, None
+
+    # 2) Si el ticker no tiene sufijo (no contiene '.' ni ':'), probar sufijos EU
+    if "." not in ticker and ":" not in ticker:
+        for suf in eu_suffixes:
+            sym = ticker + suf
+            data, err = try_download(sym)
+            if data is not None:
+                return data, None
+
+    # 3) Si el ticker tenía sufijo, intentar con el símbolo base sin sufijo
+    if "." in ticker or ":" in ticker:
+        base = ticker.split(".")[0].split(":")[0]
+        if base != ticker:
+            data, err = try_download(base)
+            if data is not None:
+                return data, None
+
+    # 4) No se encontraron datos
+    if err:
+        return None, err
+    return None, f"Sin datos disponibles para {ticker} (intentadas variaciones)"
 
 
 
@@ -88,14 +132,34 @@ def load_tickers(filename):
             continue
         for prefix in prefixes:
             item = item.replace(prefix, "")
-        item = item.upper().replace(":", ".")
+        item = normalize_ticker(item)
         tickers.append(item)
 
     return [ticker for ticker in tickers if ticker]
 
 
+def normalize_ticker(ticker):
+    ticker = ticker.upper().strip()
+    for prefix in ["NASDAQ:", "NYSE:", "AMEX:"]:
+        ticker = ticker.replace(prefix, "")
+    ticker = ticker.replace(":", ".")
+
+    known_suffixes = [
+        ".PA", ".L", ".DE", ".F", ".AS", ".MI", ".HE", ".ST", ".SW",
+        ".BME", ".SAN", ".XETR", ".ASX", ".ENX", ".FSE", ".LSE", ".SIX",
+        ".OSL", ".EURONEXT", ".OSL"
+    ]
+    for suf in known_suffixes:
+        if ticker.endswith(suf) and len(ticker) > len(suf):
+            return ticker[: -len(suf)]
+
+    return ticker
+
 
 def calculate_indicators(dataframe):
+    """
+    Calcula indicadores Smart Money, CFI, Flow, Tendencia y señales.
+    """
     data = dataframe.copy()
 
     cfi_raw = data["Volume"] * (data["Close"] - data["Open"])
@@ -110,6 +174,7 @@ def calculate_indicators(dataframe):
         "Close": "last",
         "Volume": "sum",
     })
+
     weekly_cfi_raw = weekly["Volume"] * (weekly["Close"] - weekly["Open"])
     weekly["cfi_w"] = weekly_cfi_raw.ewm(span=20, adjust=False).mean()
     weekly["cfi_w_ma"] = weekly["cfi_w"].ewm(span=20, adjust=False).mean()
@@ -289,12 +354,16 @@ class MainWindow(QMainWindow):
         self.E_Visor.setModel(self.E_Visor_model)
 
         self.B_Lista.clicked.connect(self.on_b_lista)
+        self.B_Carpeta.clicked.connect(self.on_b_carpeta)
         self.B_Ticker.clicked.connect(self.on_b_analizar)
         self.B_Cancelar.clicked.connect(self.on_b_cancelar)
+        self.B_LimpiarResultados.clicked.connect(self.on_b_clear_results)
         self.B_Salir.clicked.connect(self.close)
 
         self.analysis_thread = None
         self.current_tickers = []
+        self.cumulative_results = []
+        self.analysis_clear_results = True
         self.set_table_headers([])
 
     def set_table_headers(self, headers):
@@ -384,9 +453,7 @@ class MainWindow(QMainWindow):
             for p in parts:
                 if not p:
                     continue
-                # Normalizar: quitar prefijos y convertir a formato esperado
-                p = p.upper().replace("NASDAQ:", "").replace("NYSE:", "").replace("AMEX:", "")
-                p = p.replace(":", ".").strip()
+                p = normalize_ticker(p)
                 if p:
                     combined.append(p)
 
@@ -412,23 +479,31 @@ class MainWindow(QMainWindow):
         self.append_to_visor(f"Iniciando análisis para {len(tickers)} tickers...")
         self.start_analysis(tickers)
 
-    def start_analysis(self, tickers):
-        self.clear_visor()
-        self.append_to_visor("Iniciando análisis...")
+    def start_analysis(self, tickers, clear_results=True):
+        self.analysis_clear_results = clear_results
+        if clear_results:
+            self.clear_visor()
+            self.append_to_visor("Iniciando análisis...")
+            self.set_table_headers([])
+        else:
+            self.append_to_visor("Iniciando análisis sin borrar resultados previos...")
+
         self.B_Lista.setEnabled(False)
         self.B_Ticker.setEnabled(False)
         self.B_Cancelar.setEnabled(True)
-        self.set_table_headers([])
-        # Al iniciar análisis, vaciar la ventana E_Ticker
-        try:
-            self._suppress_e_ticker_edit_signal = True
-            if self._ticker_is_model and self.E_Ticker_model is not None:
-                self.E_Ticker_model.setStringList([])
-            else:
-                if isinstance(self.E_Ticker, QTextEdit):
-                    self.E_Ticker.clear()
-        finally:
-            self._suppress_e_ticker_edit_signal = False
+
+        if clear_results:
+            # Al iniciar análisis, vaciar la ventana E_Ticker
+            try:
+                self._suppress_e_ticker_edit_signal = True
+                if self._ticker_is_model and self.E_Ticker_model is not None:
+                    self.E_Ticker_model.setStringList([])
+                else:
+                    if isinstance(self.E_Ticker, QTextEdit):
+                        self.E_Ticker.clear()
+            finally:
+                self._suppress_e_ticker_edit_signal = False
+
         self.analysis_thread = AnalysisThread(tickers)
         self.analysis_thread.progress.connect(self.append_to_visor)
         self.analysis_thread.finished.connect(self.on_analysis_finished)
@@ -457,27 +532,31 @@ class MainWindow(QMainWindow):
         self.B_Ticker.setEnabled(True)
         self.B_Cancelar.setEnabled(False)
 
-        if not results:
+        if not results and not self.cumulative_results:
             self.append_to_visor("No se generaron resultados.")
             return
 
-        # Ordenar por Score descendente (ranking mayor a menor) y filtrar
         sorted_results = sorted(results, key=lambda r: int(r.get("Score", 0)), reverse=True)
         filtered_results = [row for row in sorted_results if int(row.get("Score", 0)) >= 60]
-        if not filtered_results:
+        if self.analysis_clear_results:
+            self.cumulative_results = filtered_results
+        else:
+            self.cumulative_results.extend(filtered_results)
+
+        if not self.cumulative_results:
             self.append_to_visor("No se generaron resultados con score >= 60.")
             return
 
-        columns = list(filtered_results[0].keys())
+        columns = list(self.cumulative_results[0].keys())
         self.set_table_headers(columns)
-        self.E_Resultados.setRowCount(len(filtered_results))
-        for row_idx, row_data in enumerate(filtered_results):
+        self.E_Resultados.setRowCount(len(self.cumulative_results))
+        for row_idx, row_data in enumerate(self.cumulative_results):
             for col_idx, header in enumerate(columns):
-                item = QTableWidgetItem(str(row_data[header]))
+                item = QTableWidgetItem(str(row_data.get(header, "")))
                 self.E_Resultados.setItem(row_idx, col_idx, item)
 
         if EXPORT_EXCEL:
-            df = pd.DataFrame(filtered_results)
+            df = pd.DataFrame(self.cumulative_results)
             try:
                 df.to_excel(EXCEL_NAME, index=False)
                 self.append_to_visor(f"Excel exportado: {EXCEL_NAME}")
@@ -486,6 +565,56 @@ class MainWindow(QMainWindow):
 
     def on_analysis_error(self, message):
         self.append_to_visor(message)
+
+    def on_b_carpeta(self):
+        folder_path = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta de listas")
+        if not folder_path:
+            return
+
+        txt_files = sorted(Path(folder_path).glob("*.txt"))
+        if not txt_files:
+            QMessageBox.warning(self, "Advertencia", "No se encontraron archivos .txt en la carpeta seleccionada.")
+            return
+
+        self.E_Lista_model.setStringList([folder_path])
+        self.append_to_visor(f"Carpeta seleccionada: {folder_path}")
+
+        all_tickers = []
+        for txt_file in txt_files:
+            tickers = load_tickers(str(txt_file))
+            all_tickers.extend(tickers)
+            self.append_to_visor(f"Cargando lista: {txt_file.name} ({len(tickers)} tickers)")
+
+        if not all_tickers:
+            QMessageBox.warning(self, "Advertencia", "No se encontraron tickers válidos en las listas de la carpeta.")
+            return
+
+        # Eliminar duplicados preservando orden
+        seen = set()
+        unique_tickers = []
+        for ticker in all_tickers:
+            if ticker not in seen:
+                seen.add(ticker)
+                unique_tickers.append(ticker)
+
+        self.current_tickers = unique_tickers
+        self._suppress_e_ticker_edit_signal = True
+        if self._ticker_is_model and self.E_Ticker_model is not None:
+            self.E_Ticker_model.setStringList(unique_tickers)
+            try:
+                self.E_Ticker.setCurrentIndex(self.E_Ticker_model.index(0, 0))
+            except Exception:
+                pass
+        else:
+            self.E_Ticker.setPlainText("\n".join(unique_tickers))
+        self._suppress_e_ticker_edit_signal = False
+
+        self.start_analysis(unique_tickers, clear_results=False)
+
+    def on_b_clear_results(self):
+        self.cumulative_results = []
+        self.set_table_headers([])
+        self.append_to_visor("Ventana de resultados borrada.")
 
     def on_b_cancelar(self):
         if self.analysis_thread and self.analysis_thread.isRunning():
