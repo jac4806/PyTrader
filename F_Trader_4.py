@@ -8,12 +8,14 @@
 import sys
 import time
 from datetime import datetime
+from urllib.parse import quote_plus
 
 from PyQt6 import uic
-from PyQt6.QtGui import QTextCursor  # pylint: disable=no-name-in-module
+from PyQt6.QtGui import QDesktopServices, QTextCursor  # pylint: disable=no-name-in-module
 from PyQt6.QtCore import (  # pylint: disable=no-name-in-module
     Qt,
     QEvent,
+    QUrl,
     QThread,
     QTimer,
     pyqtSignal,
@@ -410,6 +412,7 @@ class MainWindow(QMainWindow):
         self.E_Ticker.installEventFilter(self)
         self.E_Resultados.setSortingEnabled(True)
         self.E_Resultados.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.E_Resultados.cellDoubleClicked.connect(self.on_result_double_clicked)
 
         self.analysis_thread = None
         self.current_tickers = []
@@ -595,26 +598,12 @@ class MainWindow(QMainWindow):
         if not txt_files:
             return []
 
-<<<<<<< HEAD
-        all_tickers = []
-        for txt_file in txt_files:
-            tickers = load_tickers(str(txt_file))
-            all_tickers.extend(tickers)
-            if log_files:
-                self.append_to_visor(f"Cargando lista: {txt_file.name} ({len(tickers)} tickers)")
-=======
-        return self._load_list_tickers(txt_files, log_files=log_files)
-
-    def _load_list_tickers(self, file_paths, log_files=False):
         all_tickers = []
         for file_path in file_paths:
             tickers = load_tickers(str(file_path))
             all_tickers.extend(tickers)
             if log_files:
-                self.append_to_visor(
-                    f"Cargando lista: {Path(file_path).name} ({len(tickers)} tickers)"
-                )
->>>>>>> 359a64f (Actualizamos commit ACER)
+                self.append_to_visor(f"Cargando lista: {txt_file.name} ({len(tickers)} tickers)")
 
         seen = set()
         unique_tickers = []
@@ -633,17 +622,6 @@ class MainWindow(QMainWindow):
             self.append_to_visor(f"Loop: recargando lista {self.loop_source_path}")
             return tickers
 
-<<<<<<< HEAD
-=======
-        if self.loop_source_type == "files":
-            tickers = self._load_list_tickers(self.loop_source_path, log_files=True)
-            if not tickers:
-                self.append_to_visor("Loop detenido: las listas no contienen tickers válidos.")
-                return []
-            self.append_to_visor(f"Loop: recargando {len(self.loop_source_path)} listas")
-            return tickers
-
->>>>>>> 359a64f (Actualizamos commit ACER)
         if self.loop_source_type == "folder":
             tickers = self._load_folder_tickers(self.loop_source_path)
             if not tickers:
@@ -693,11 +671,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-<<<<<<< HEAD
         self._set_loop_source("file", file_path)
-=======
-        self._set_loop_source("files", file_paths)
->>>>>>> 359a64f (Actualizamos commit ACER)
         self.current_tickers = tickers
         self.clear_ticker_input()
         self.start_analysis(tickers, clear_results=False)
@@ -816,6 +790,29 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def on_result_double_clicked(self, row, _column):
+        ticker_col = None
+        for col in range(self.E_Resultados.columnCount()):
+            header_item = self.E_Resultados.horizontalHeaderItem(col)
+            if header_item and header_item.text() == "Ticker":
+                ticker_col = col
+                break
+
+        if ticker_col is None:
+            return
+
+        item = self.E_Resultados.item(row, ticker_col)
+        if item is None:
+            return
+
+        ticker = item.text().strip()
+        if not ticker:
+            return
+
+        url = QUrl(f"https://www.google.com/finance/beta/?hl=es&q={quote_plus(ticker)}")
+        if not QDesktopServices.openUrl(url):
+            self.append_to_visor(f"No se pudo abrir Google Finance para {ticker}.")
+
     def on_analysis_finished(self, results):
         self.append_to_visor("Análisis finalizado.")
         self.B_Lista.setEnabled(True)
@@ -847,15 +844,10 @@ class MainWindow(QMainWindow):
 
         if not self.cumulative_results:
 <<<<<<< HEAD
-<<<<<<< HEAD
 =======
             if replace_results:
                 self.set_table_headers([])
 >>>>>>> c5f5b07 (Actualizamos commit ACER)
-=======
-            if replace_results:
-                self.set_table_headers([])
->>>>>>> 359a64f (Actualizamos commit ACER)
             self.append_to_visor(
                 f"No hay resultados con Score superior a {MIN_SCORE_TO_DISPLAY}."
             )
