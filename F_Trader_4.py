@@ -598,12 +598,17 @@ class MainWindow(QMainWindow):
         if not txt_files:
             return []
 
+        return self._load_list_tickers(txt_files, log_files=log_files)
+
+    def _load_list_tickers(self, file_paths, log_files=False):
         all_tickers = []
         for file_path in file_paths:
             tickers = load_tickers(str(file_path))
             all_tickers.extend(tickers)
             if log_files:
-                self.append_to_visor(f"Cargando lista: {txt_file.name} ({len(tickers)} tickers)")
+                self.append_to_visor(
+                    f"Cargando lista: {Path(file_path).name} ({len(tickers)} tickers)"
+                )
 
         seen = set()
         unique_tickers = []
@@ -620,6 +625,14 @@ class MainWindow(QMainWindow):
                 self.append_to_visor("Loop detenido: la lista no contiene tickers válidos.")
                 return []
             self.append_to_visor(f"Loop: recargando lista {self.loop_source_path}")
+            return tickers
+
+        if self.loop_source_type == "files":
+            tickers = self._load_list_tickers(self.loop_source_path, log_files=True)
+            if not tickers:
+                self.append_to_visor("Loop detenido: las listas no contienen tickers válidos.")
+                return []
+            self.append_to_visor(f"Loop: recargando {len(self.loop_source_path)} listas")
             return tickers
 
         if self.loop_source_type == "folder":
@@ -671,7 +684,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-        self._set_loop_source("file", file_path)
+        self._set_loop_source("files", file_paths)
         self.current_tickers = tickers
         self.clear_ticker_input()
         self.start_analysis(tickers, clear_results=False)
@@ -843,11 +856,8 @@ class MainWindow(QMainWindow):
             self.cumulative_results.extend(filtered_results)
 
         if not self.cumulative_results:
-<<<<<<< HEAD
-=======
             if replace_results:
                 self.set_table_headers([])
->>>>>>> c5f5b07 (Actualizamos commit ACER)
             self.append_to_visor(
                 f"No hay resultados con Score superior a {MIN_SCORE_TO_DISPLAY}."
             )

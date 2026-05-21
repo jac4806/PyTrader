@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Mi Trading V1.7</string>
+   <string>Mi Trading V1.8</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QPushButton" name="B_LimpiarResultados">
