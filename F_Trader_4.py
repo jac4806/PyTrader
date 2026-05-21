@@ -2,7 +2,7 @@
 
 #*******************************************************************
 #
-#               18/05/2026
+#               21/05/2026
 #
 #******************************************************************
 import sys
@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 
 from PyQt6 import uic
+from PyQt6.QtGui import QTextCursor  # pylint: disable=no-name-in-module
 from PyQt6.QtCore import (  # pylint: disable=no-name-in-module
     Qt,
     QEvent,
@@ -371,7 +372,7 @@ class MainWindow(QMainWindow):
             self._ticker_is_model = False
             if isinstance(self.E_Ticker, QTextEdit):
                 # dejar el widget editable (por defecto ya lo es)
-                pass
+                self.E_Ticker.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         # Señal para suprimir efectos durante cambios programáticos
         self._suppress_e_ticker_edit_signal = False
         # Conectar señales para detectar edición del E_Ticker
@@ -439,6 +440,43 @@ class MainWindow(QMainWindow):
                 self.E_Ticker.clear()
         finally:
             self._suppress_e_ticker_edit_signal = False
+
+    def _format_e_ticker_text(self, text):
+        parts = [part.strip() for part in str(text).replace(";", ",").splitlines()]
+        return ",".join(part for part in parts if part).upper()
+
+    def _enforce_e_ticker_single_uppercase_line(self):
+        if self._ticker_is_model and self.E_Ticker_model is not None:
+            current_items = [
+                self.E_Ticker_model.data(
+                    self.E_Ticker_model.index(i, 0),
+                    Qt.ItemDataRole.DisplayRole,
+                )
+                for i in range(self.E_Ticker_model.rowCount())
+            ]
+            current_text = "\n".join(str(item) for item in current_items if item)
+            formatted_text = self._format_e_ticker_text(current_text)
+            formatted_items = [formatted_text] if formatted_text else []
+            if current_items != formatted_items:
+                self._suppress_e_ticker_edit_signal = True
+                try:
+                    self.E_Ticker_model.setStringList(formatted_items)
+                finally:
+                    self._suppress_e_ticker_edit_signal = False
+            return
+
+        if isinstance(self.E_Ticker, QTextEdit):
+            current_text = self.E_Ticker.toPlainText()
+            formatted_text = self._format_e_ticker_text(current_text)
+            if current_text != formatted_text:
+                self._suppress_e_ticker_edit_signal = True
+                try:
+                    self.E_Ticker.setPlainText(formatted_text)
+                    cursor = self.E_Ticker.textCursor()
+                    cursor.movePosition(QTextCursor.MoveOperation.End)
+                    self.E_Ticker.setTextCursor(cursor)
+                finally:
+                    self._suppress_e_ticker_edit_signal = False
 
     def eventFilter(self, source, event):
         if source is self.E_Ticker and event.type() == QEvent.Type.KeyPress:
@@ -569,10 +607,11 @@ class MainWindow(QMainWindow):
         self.analysis_thread.error.connect(self.on_analysis_error)
         self.analysis_thread.start()
 
-    def on_e_ticker_edited(self, *args, **kwargs):
+    def on_e_ticker_edited(self, *_args, **_kwargs):
         # Si el cambio fue programático, no borramos E_Lista
         if getattr(self, "_suppress_e_ticker_edit_signal", False):
             return
+        self._enforce_e_ticker_single_uppercase_line()
         try:
             # Limpiar E_Lista (archivo seleccionado)
             if self.E_Lista_model is not None:
