@@ -15,6 +15,7 @@ from PyQt6.QtCore import (  # pylint: disable=no-name-in-module
     Qt,
     QEvent,
     QThread,
+    QTimer,
     pyqtSignal,
     QStringListModel,
 )
@@ -401,6 +402,8 @@ class MainWindow(QMainWindow):
         self.B_Borrar.setText("Borrar")
         self.B_Borrar.clicked.connect(self.on_b_clear_results)
         self.B_Salir.clicked.connect(self.close)
+        self.C_Tiempo.toggled.connect(self.on_c_tiempo_toggled)
+        self.E_Tiempo.textChanged.connect(self.on_e_tiempo_edited)
 
         self.E_Ticker.installEventFilter(self)
         self.E_Resultados.setSortingEnabled(True)
@@ -408,9 +411,21 @@ class MainWindow(QMainWindow):
 
         self.analysis_thread = None
         self.current_tickers = []
+        self.loop_source_type = None
+        self.loop_source_path = None
+        self.loop_timer = QTimer(self)
+        self.loop_timer.setSingleShot(True)
+        self.loop_timer.timeout.connect(self.on_loop_timer_timeout)
+        self.clock_timer = QTimer(self)
+        self.clock_timer.timeout.connect(self.update_lcd_reloj)
+        self.clock_timer.start(1000)
+        self._suppress_e_tiempo_edit_signal = False
         self.cumulative_results = []
         self.analysis_clear_results = False
+        self.analysis_replace_results = False
+        self.lcd_Reloj.setDigitCount(8)
         self.set_table_headers([])
+        self.update_lcd_reloj()
 
     def set_table_headers(self, headers):
         self.E_Resultados.setSortingEnabled(False)
@@ -479,6 +494,140 @@ class MainWindow(QMainWindow):
                 finally:
                     self._suppress_e_ticker_edit_signal = False
 
+    def _get_e_tiempo_text(self):
+        if isinstance(self.E_Tiempo, QTextEdit):
+            return self.E_Tiempo.toPlainText().strip()
+        try:
+            return self.E_Tiempo.text().strip()
+        except Exception:
+            return ""
+
+    def _set_e_tiempo_text(self, text):
+        if isinstance(self.E_Tiempo, QTextEdit):
+            self.E_Tiempo.setPlainText(text)
+            cursor = self.E_Tiempo.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            self.E_Tiempo.setTextCursor(cursor)
+            return
+        try:
+            self.E_Tiempo.setText(text)
+        except Exception:
+            pass
+
+    def _enforce_e_tiempo_numbers(self):
+        current_text = self._get_e_tiempo_text()
+        numeric_text = "".join(ch for ch in current_text if ch.isdigit())
+        if current_text != numeric_text:
+            self._suppress_e_tiempo_edit_signal = True
+            try:
+                self._set_e_tiempo_text(numeric_text)
+            finally:
+                self._suppress_e_tiempo_edit_signal = False
+
+    def _get_loop_minutes(self, show_warning=False):
+        self._enforce_e_tiempo_numbers()
+        minutes_text = self._get_e_tiempo_text()
+        if not minutes_text:
+            if show_warning:
+                QMessageBox.warning(
+                    self,
+                    "Tiempo no indicado",
+                    "Introduce los minutos en E_Tiempo para activar el loop.",
+                )
+            return None
+
+        minutes = int(minutes_text)
+        if minutes <= 0:
+            if show_warning:
+                QMessageBox.warning(
+                    self,
+                    "Tiempo no válido",
+                    "E_Tiempo debe ser mayor que 0 minutos.",
+                )
+            return None
+        return minutes
+
+    def _set_loop_source(self, source_type, source_path):
+        self.loop_source_type = source_type
+        self.loop_source_path = source_path
+
+    def _stop_loop_timer(self):
+        if self.loop_timer.isActive():
+            self.loop_timer.stop()
+        self.update_lcd_reloj()
+
+    def _schedule_next_timed_analysis(self):
+        if not self.C_Tiempo.isChecked():
+            self._stop_loop_timer()
+            return
+
+        minutes = self._get_loop_minutes(show_warning=False)
+        if not minutes or not self.loop_source_type or not self.loop_source_path:
+            self._stop_loop_timer()
+            return
+
+        self.loop_timer.start(minutes * 60 * 1000)
+        self.update_lcd_reloj()
+        self.append_to_visor(f"Próximo análisis automático en {minutes} minutos.")
+
+    def _format_countdown(self, milliseconds):
+        total_seconds = max(0, (milliseconds + 999) // 1000)
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    def update_lcd_reloj(self):
+        if self.C_Tiempo.isChecked():
+            remaining = self.loop_timer.remainingTime()
+            if remaining > 0:
+                self.lcd_Reloj.display(self._format_countdown(remaining))
+            else:
+                self.lcd_Reloj.display("00:00:00")
+            return
+
+        self.lcd_Reloj.display(datetime.now().strftime("%H:%M:%S"))
+
+    def _load_folder_tickers(self, folder_path, log_files=False):
+        txt_files = sorted(Path(folder_path).glob("*.txt"))
+        if not txt_files:
+            return []
+
+        all_tickers = []
+        for txt_file in txt_files:
+            tickers = load_tickers(str(txt_file))
+            all_tickers.extend(tickers)
+            if log_files:
+                self.append_to_visor(f"Cargando lista: {txt_file.name} ({len(tickers)} tickers)")
+
+        seen = set()
+        unique_tickers = []
+        for ticker in all_tickers:
+            if ticker not in seen:
+                seen.add(ticker)
+                unique_tickers.append(ticker)
+        return unique_tickers
+
+    def _load_loop_tickers(self):
+        if self.loop_source_type == "file":
+            tickers = load_tickers(self.loop_source_path)
+            if not tickers:
+                self.append_to_visor("Loop detenido: la lista no contiene tickers válidos.")
+                return []
+            self.append_to_visor(f"Loop: recargando lista {self.loop_source_path}")
+            return tickers
+
+        if self.loop_source_type == "folder":
+            tickers = self._load_folder_tickers(self.loop_source_path)
+            if not tickers:
+                self.append_to_visor("Loop detenido: la carpeta no contiene tickers válidos.")
+                return []
+            self.append_to_visor(f"Loop: recargando carpeta {self.loop_source_path}")
+            return tickers
+
+        self.append_to_visor("Loop detenido: selecciona una lista o carpeta.")
+        return []
+
     def eventFilter(self, source, event):
         if source is self.E_Ticker and event.type() == QEvent.Type.KeyPress:
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -513,6 +662,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Advertencia", "No se encontraron tickers en el archivo.")
             return
 
+        self._set_loop_source("file", file_path)
         self.current_tickers = tickers
         self.clear_ticker_input()
         self.start_analysis(tickers, clear_results=False)
@@ -588,17 +738,21 @@ class MainWindow(QMainWindow):
             return
 
         self.append_to_visor(f"Iniciando análisis para {len(tickers)} tickers...")
+        self._set_loop_source(None, None)
         self.clear_ticker_input()
         self.start_analysis(tickers, clear_results=False)
 
-    def start_analysis(self, tickers, clear_results=False):
+    def start_analysis(self, tickers, clear_results=False, replace_results=False):
+        self._stop_loop_timer()
         self.analysis_clear_results = clear_results
+        self.analysis_replace_results = replace_results
         if clear_results:
             self.cumulative_results = []
             self.set_table_headers([])
         self.append_to_visor("Iniciando análisis...")
 
         self.B_Lista.setEnabled(False)
+        self.B_Carpeta.setEnabled(False)
         self.B_Ticker.setEnabled(False)
         self.B_Cancelar.setEnabled(True)
 
@@ -617,6 +771,8 @@ class MainWindow(QMainWindow):
             # Limpiar E_Lista (archivo seleccionado)
             if self.E_Lista_model is not None:
                 self.E_Lista_model.setStringList([])
+            self._set_loop_source(None, None)
+            self._stop_loop_timer()
             # Limpiar visor y otras ventanas de texto
             try:
                 self.clear_visor()
@@ -628,10 +784,20 @@ class MainWindow(QMainWindow):
     def on_analysis_finished(self, results):
         self.append_to_visor("Análisis finalizado.")
         self.B_Lista.setEnabled(True)
+        self.B_Carpeta.setEnabled(True)
         self.B_Ticker.setEnabled(True)
         self.B_Cancelar.setEnabled(False)
+        self._schedule_next_timed_analysis()
+
+        replace_results = self.analysis_replace_results
+        self.analysis_replace_results = False
+
+        if replace_results:
+            self.cumulative_results = []
 
         if not results and not self.cumulative_results:
+            if replace_results:
+                self.set_table_headers([])
             self.append_to_visor("No se generaron resultados.")
             return
 
@@ -645,6 +811,11 @@ class MainWindow(QMainWindow):
             self.cumulative_results.extend(filtered_results)
 
         if not self.cumulative_results:
+<<<<<<< HEAD
+=======
+            if replace_results:
+                self.set_table_headers([])
+>>>>>>> c5f5b07 (Actualizamos commit ACER)
             self.append_to_visor(
                 f"No hay resultados con Score superior a {MIN_SCORE_TO_DISPLAY}."
             )
@@ -683,6 +854,57 @@ class MainWindow(QMainWindow):
     def on_analysis_error(self, message):
         self.append_to_visor(message)
 
+    def on_e_tiempo_edited(self):
+        if getattr(self, "_suppress_e_tiempo_edit_signal", False):
+            return
+        self._enforce_e_tiempo_numbers()
+        if self.C_Tiempo.isChecked() and not (
+            self.analysis_thread and self.analysis_thread.isRunning()
+        ):
+            self._schedule_next_timed_analysis()
+        self.update_lcd_reloj()
+
+    def on_c_tiempo_toggled(self, checked):
+        if not checked:
+            self._stop_loop_timer()
+            self.update_lcd_reloj()
+            self.append_to_visor("Loop desactivado.")
+            return
+
+        if not self._get_loop_minutes(show_warning=True):
+            self.C_Tiempo.setChecked(False)
+            return
+
+        if not self.loop_source_type or not self.loop_source_path:
+            QMessageBox.warning(
+                self,
+                "Sin lista o carpeta",
+                "Selecciona una lista o carpeta antes de activar el loop.",
+            )
+            self.C_Tiempo.setChecked(False)
+            return
+
+        self.append_to_visor("Loop activado.")
+        if not (self.analysis_thread and self.analysis_thread.isRunning()):
+            self._schedule_next_timed_analysis()
+        self.update_lcd_reloj()
+
+    def on_loop_timer_timeout(self):
+        self.update_lcd_reloj()
+        if not self.C_Tiempo.isChecked():
+            return
+        if self.analysis_thread and self.analysis_thread.isRunning():
+            self._schedule_next_timed_analysis()
+            return
+
+        tickers = self._load_loop_tickers()
+        if not tickers:
+            self.C_Tiempo.setChecked(False)
+            return
+
+        self.current_tickers = tickers
+        self.start_analysis(tickers, replace_results=True)
+
     def on_b_carpeta(self):
         folder_path = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta de listas")
         if not folder_path:
@@ -700,13 +922,9 @@ class MainWindow(QMainWindow):
         self.E_Lista_model.setStringList([folder_path])
         self.append_to_visor(f"Carpeta seleccionada: {folder_path}")
 
-        all_tickers = []
-        for txt_file in txt_files:
-            tickers = load_tickers(str(txt_file))
-            all_tickers.extend(tickers)
-            self.append_to_visor(f"Cargando lista: {txt_file.name} ({len(tickers)} tickers)")
+        unique_tickers = self._load_folder_tickers(folder_path, log_files=True)
 
-        if not all_tickers:
+        if not unique_tickers:
             QMessageBox.warning(
                 self,
                 "Advertencia",
@@ -714,14 +932,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Eliminar duplicados preservando orden
-        seen = set()
-        unique_tickers = []
-        for ticker in all_tickers:
-            if ticker not in seen:
-                seen.add(ticker)
-                unique_tickers.append(ticker)
-
+        self._set_loop_source("folder", folder_path)
         self.current_tickers = unique_tickers
         self.clear_ticker_input()
         self.start_analysis(unique_tickers, clear_results=False)
