@@ -46,6 +46,8 @@ INTERVAL = "1d"
 
 EXPORT_EXCEL = True
 EXCEL_NAME = "SmartMoney_Screener.xlsx"
+APP_DIR = Path(__file__).resolve().parent
+UI_FILE = APP_DIR / "F_Trader_4.ui"
 
 DELAY_BETWEEN_REQUESTS = 1
 TXT_FILE = "Mi_Lista.txt"
@@ -353,7 +355,7 @@ class AnalysisThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        uic.loadUi("F_Trader_4.ui", self)
+        uic.loadUi(UI_FILE, self)
 
         self.E_Lista_model = QStringListModel()
         self.E_Lista.setModel(self.E_Lista_model)
@@ -593,12 +595,26 @@ class MainWindow(QMainWindow):
         if not txt_files:
             return []
 
+<<<<<<< HEAD
         all_tickers = []
         for txt_file in txt_files:
             tickers = load_tickers(str(txt_file))
             all_tickers.extend(tickers)
             if log_files:
                 self.append_to_visor(f"Cargando lista: {txt_file.name} ({len(tickers)} tickers)")
+=======
+        return self._load_list_tickers(txt_files, log_files=log_files)
+
+    def _load_list_tickers(self, file_paths, log_files=False):
+        all_tickers = []
+        for file_path in file_paths:
+            tickers = load_tickers(str(file_path))
+            all_tickers.extend(tickers)
+            if log_files:
+                self.append_to_visor(
+                    f"Cargando lista: {Path(file_path).name} ({len(tickers)} tickers)"
+                )
+>>>>>>> 359a64f (Actualizamos commit ACER)
 
         seen = set()
         unique_tickers = []
@@ -617,6 +633,17 @@ class MainWindow(QMainWindow):
             self.append_to_visor(f"Loop: recargando lista {self.loop_source_path}")
             return tickers
 
+<<<<<<< HEAD
+=======
+        if self.loop_source_type == "files":
+            tickers = self._load_list_tickers(self.loop_source_path, log_files=True)
+            if not tickers:
+                self.append_to_visor("Loop detenido: las listas no contienen tickers válidos.")
+                return []
+            self.append_to_visor(f"Loop: recargando {len(self.loop_source_path)} listas")
+            return tickers
+
+>>>>>>> 359a64f (Actualizamos commit ACER)
         if self.loop_source_type == "folder":
             tickers = self._load_folder_tickers(self.loop_source_path)
             if not tickers:
@@ -645,24 +672,32 @@ class MainWindow(QMainWindow):
         self.E_Visor_model.setStringList([])
 
     def on_b_lista(self):
-        file_path, _ = QFileDialog.getOpenFileName(
+        file_paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "Seleccionar Archivo de Tickers",
+            "Seleccionar Archivos de Tickers",
             "",
             "Archivos TXT (*.txt)",
         )
-        if not file_path:
+        if not file_paths:
             return
 
-        self.E_Lista_model.setStringList([file_path])
-        self.append_to_visor(f"Archivo seleccionado: {file_path}")
+        self.E_Lista_model.setStringList(file_paths)
+        self.append_to_visor(f"Archivos seleccionados: {len(file_paths)}")
 
-        tickers = load_tickers(file_path)
+        tickers = self._load_list_tickers(file_paths, log_files=True)
         if not tickers:
-            QMessageBox.warning(self, "Advertencia", "No se encontraron tickers en el archivo.")
+            QMessageBox.warning(
+                self,
+                "Advertencia",
+                "No se encontraron tickers en los archivos seleccionados.",
+            )
             return
 
+<<<<<<< HEAD
         self._set_loop_source("file", file_path)
+=======
+        self._set_loop_source("files", file_paths)
+>>>>>>> 359a64f (Actualizamos commit ACER)
         self.current_tickers = tickers
         self.clear_ticker_input()
         self.start_analysis(tickers, clear_results=False)
@@ -812,10 +847,15 @@ class MainWindow(QMainWindow):
 
         if not self.cumulative_results:
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
             if replace_results:
                 self.set_table_headers([])
 >>>>>>> c5f5b07 (Actualizamos commit ACER)
+=======
+            if replace_results:
+                self.set_table_headers([])
+>>>>>>> 359a64f (Actualizamos commit ACER)
             self.append_to_visor(
                 f"No hay resultados con Score superior a {MIN_SCORE_TO_DISPLAY}."
             )
