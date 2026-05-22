@@ -2,6 +2,19 @@
 
 Aplicacion de escritorio en Python/PyQt6 para analizar tickers con yfinance.
 
+## Correo de resultados
+
+Al finalizar el analisis, la aplicacion envia a `titogilito64@gmail.com` los
+resultados con `Score` superior a `80` si estan configuradas estas variables:
+
+```bash
+PYTRADER_SMTP_HOST=smtp.gmail.com
+PYTRADER_SMTP_PORT=587
+PYTRADER_SMTP_USER=tu_correo@gmail.com
+PYTRADER_SMTP_PASSWORD=tu_password_de_aplicacion
+PYTRADER_SMTP_FROM=tu_correo@gmail.com
+```
+
 ## Instalar en Linux
 
 Desde la carpeta del proyecto:

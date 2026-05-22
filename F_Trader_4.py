@@ -7,7 +7,10 @@
 #******************************************************************
 import sys
 import time
+import os
+import smtplib
 from datetime import datetime
+from email.message import EmailMessage
 from urllib.parse import quote_plus
 
 from PyQt6 import uic
@@ -54,6 +57,14 @@ UI_FILE = APP_DIR / "F_Trader_4.ui"
 DELAY_BETWEEN_REQUESTS = 1
 TXT_FILE = "Mi_Lista.txt"
 MIN_SCORE_TO_DISPLAY = 60
+EMAIL_RESULTS_TO = "titogilito64@gmail.com"
+EMAIL_MIN_SCORE = 80
+SMTP_HOST = os.getenv("PYTRADER_SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("PYTRADER_SMTP_PORT", "587"))
+SMTP_USER = os.getenv("PYTRADER_SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("PYTRADER_SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("PYTRADER_SMTP_FROM", SMTP_USER)
+SMTP_USE_TLS = os.getenv("PYTRADER_SMTP_TLS", "1") != "0"
 
 
 # =========================================================
@@ -288,6 +299,72 @@ def calculate_indicators(dataframe):
     data["signal"] = np.select(conditions, choices, default="ESPERA")
 
     return data
+
+
+def build_high_score_email_body(results):
+    lines = [
+        "Resultados del analisis Smart Money con Score superior a "
+        f"{EMAIL_MIN_SCORE}:",
+        "",
+    ]
+
+    for row in results:
+        lines.append(
+            " | ".join(
+                [
+                    f"Ticker: {row.get('Ticker', '')}",
+                    f"Score: {row.get('Score', '')}",
+                    f"Precio: {row.get('Precio', '')}",
+                    f"Signal: {row.get('Signal', '')}",
+                    f"Trend: {row.get('Trend', '')}",
+                    f"CFI Diario: {row.get('CFI Diario', '')}",
+                    f"CFI Semanal: {row.get('CFI Semanal', '')}",
+                    f"Flow: {row.get('Flow', '')}",
+                    f"Smart Money: {row.get('Smart Money', '')}",
+                ]
+            )
+        )
+
+    return "\n".join(lines)
+
+
+def send_high_score_email(results):
+    if not results:
+        return False, "No hay resultados con Score superior a 80 para enviar."
+
+    missing = []
+    if not SMTP_HOST:
+        missing.append("PYTRADER_SMTP_HOST")
+    if not SMTP_USER:
+        missing.append("PYTRADER_SMTP_USER")
+    if not SMTP_PASSWORD:
+        missing.append("PYTRADER_SMTP_PASSWORD")
+    if not SMTP_FROM:
+        missing.append("PYTRADER_SMTP_FROM")
+
+    if missing:
+        return (
+            False,
+            "Correo no enviado: faltan variables SMTP "
+            + ", ".join(missing)
+            + ".",
+        )
+
+    message = EmailMessage()
+    message["From"] = SMTP_FROM
+    message["To"] = EMAIL_RESULTS_TO
+    message["Subject"] = (
+        f"PyTrader: {len(results)} resultados con Score > {EMAIL_MIN_SCORE}"
+    )
+    message.set_content(build_high_score_email_body(results))
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
+        if SMTP_USE_TLS:
+            smtp.starttls()
+        smtp.login(SMTP_USER, SMTP_PASSWORD)
+        smtp.send_message(message)
+
+    return True, f"Correo enviado a {EMAIL_RESULTS_TO} con {len(results)} resultados."
 
 
 class AnalysisThread(QThread):
@@ -881,6 +958,20 @@ class MainWindow(QMainWindow):
                 self.append_to_visor(f"Excel exportado: {EXCEL_NAME}")
             except Exception as exc:
                 self.append_to_visor(f"Error exportando Excel: {exc}")
+
+        high_score_results = [
+            row for row in sorted_results if int(row.get("Score", 0)) > EMAIL_MIN_SCORE
+        ]
+        try:
+            email_sent, email_message = send_high_score_email(high_score_results)
+            self.append_to_visor(email_message)
+            if not email_sent and high_score_results:
+                self.append_to_visor(
+                    "Configura PYTRADER_SMTP_HOST, PYTRADER_SMTP_USER y "
+                    "PYTRADER_SMTP_PASSWORD para activar el envio automatico."
+                )
+        except Exception as exc:
+            self.append_to_visor(f"Error enviando correo: {exc}")
 
     def on_analysis_error(self, message):
         self.append_to_visor(message)
