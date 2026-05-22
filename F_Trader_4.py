@@ -48,6 +48,7 @@ EXCEL_NAME = "SmartMoney_Screener.xlsx"
 
 DELAY_BETWEEN_REQUESTS = 1
 TXT_FILE = "Mi_Lista.txt"
+MIN_SCORE_TO_DISPLAY = 60
 
 
 # =========================================================
@@ -634,19 +635,34 @@ class MainWindow(QMainWindow):
             self.append_to_visor("No se generaron resultados.")
             return
 
-        if results:
-            self.cumulative_results.extend(results)
+        filtered_results = [
+            row
+            for row in results
+            if int(row.get("Score", 0)) > MIN_SCORE_TO_DISPLAY
+        ]
+
+        if filtered_results:
+            self.cumulative_results.extend(filtered_results)
 
         if not self.cumulative_results:
-            self.append_to_visor("No hay resultados para mostrar.")
+            self.append_to_visor(
+                f"No hay resultados con Score superior a {MIN_SCORE_TO_DISPLAY}."
+            )
             return
 
-        columns = list(self.cumulative_results[0].keys())
+        sorted_results = sorted(
+            self.cumulative_results,
+            key=lambda row: int(row.get("Score", 0)),
+            reverse=True,
+        )
+        self.cumulative_results = sorted_results
+
+        columns = list(sorted_results[0].keys())
         self.set_table_headers(columns)
         self.E_Resultados.setSortingEnabled(False)
-        self.E_Resultados.setRowCount(len(self.cumulative_results))
+        self.E_Resultados.setRowCount(len(sorted_results))
         numeric_columns = {"Precio", "Score", "Vol Relativo"}
-        for row_idx, row_data in enumerate(self.cumulative_results):
+        for row_idx, row_data in enumerate(sorted_results):
             for col_idx, header in enumerate(columns):
                 value = row_data.get(header, "")
                 item = QTableWidgetItem(str(value))
