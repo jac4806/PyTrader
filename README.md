@@ -2,6 +2,20 @@
 
 Aplicacion de escritorio en Python/PyQt6 para analizar tickers con yfinance.
 
+## Instalar en Windows
+
+Desde PowerShell, en la carpeta del proyecto:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install_windows.ps1
+```
+
+El instalador crea:
+
+- un entorno virtual en `.venv`
+- el lanzador `pytrader.bat`
+- accesos directos en el Escritorio y en el menu Inicio
+
 ## Correo de resultados
 
 Al finalizar el analisis, la aplicacion envia a `titogilito64@gmail.com` los
