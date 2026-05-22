@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: F_Trader_4",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/F_Trader_4.py",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}

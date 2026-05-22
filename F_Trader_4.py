@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+"""Smart Money stock screener with a PyQt6 user interface."""
+
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
 #*******************************************************************
 #
 #               18/05/2026
@@ -8,9 +13,20 @@ import time
 from datetime import datetime
 
 from PyQt6 import uic
+<<<<<<< HEAD
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QStringListModel
 from PyQt6.QtGui import QStandardItemModel, QStandardItem
 from PyQt6.QtWidgets import (
+=======
+from PyQt6.QtCore import (  # pylint: disable=no-name-in-module
+    Qt,
+    QEvent,
+    QThread,
+    pyqtSignal,
+    QStringListModel,
+)
+from PyQt6.QtWidgets import (  # pylint: disable=no-name-in-module
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
     QApplication,
     QMainWindow,
     QFileDialog,
@@ -55,15 +71,27 @@ def download_data_safe(ticker, period="1y", interval="1d", max_retries=3):
     """
     # Sufijos comunes para exchanges europeos (se intentan si no vienen en el ticker)
     eu_suffixes = [
+<<<<<<< HEAD
         ".PA", ".L", ".DE", ".F", ".AS", ".MI", ".HE", ".ST", ".SW",
         ".BME", ".XETR", ".ASX", ".ENX", ".FSE", ".LSE", ".SIX",
+=======
+        ".MC", ".PA", ".L", ".DE", ".F", ".AS", ".MI", ".HE", ".ST",
+        ".SW", ".OL", ".CO", ".BR", ".LS", ".VI",
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
     ]
 
     def try_download(sym):
         for attempt in range(max_retries):
             try:
                 # Silenciar la salida de yfinance
+<<<<<<< HEAD
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+=======
+                with (
+                    contextlib.redirect_stdout(io.StringIO()),
+                    contextlib.redirect_stderr(io.StringIO()),
+                ):
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
                     stock_data = yf.download(
                         sym,
                         period=period,
@@ -123,6 +151,7 @@ def load_tickers(filename):
     except FileNotFoundError:
         return []
 
+<<<<<<< HEAD
     prefixes = ["NASDAQ:", "NYSE:", "AMEX:"]
     tickers = []
 
@@ -132,6 +161,14 @@ def load_tickers(filename):
             continue
         for prefix in prefixes:
             item = item.replace(prefix, "")
+=======
+    tickers = []
+
+    for item in content.replace(";", ",").replace("\n", ",").split(","):
+        item = item.strip()
+        if not item:
+            continue
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
         item = normalize_ticker(item)
         tickers.append(item)
 
@@ -140,6 +177,7 @@ def load_tickers(filename):
 
 def normalize_ticker(ticker):
     ticker = ticker.upper().strip()
+<<<<<<< HEAD
     for prefix in ["NASDAQ:", "NYSE:", "AMEX:"]:
         ticker = ticker.replace(prefix, "")
     ticker = ticker.replace(":", ".")
@@ -154,6 +192,49 @@ def normalize_ticker(ticker):
             return ticker[: -len(suf)]
 
     return ticker
+=======
+    if not ticker:
+        return ""
+
+    exchange_suffix_map = {
+        "BME": ".MC",
+        "BM": ".MC",
+        "MC": ".MC",
+        "EPA": ".PA",
+        "PAR": ".PA",
+        "LON": ".L",
+        "LSE": ".L",
+        "XETR": ".DE",
+        "ETR": ".DE",
+        "FRA": ".F",
+        "MIL": ".MI",
+        "BIT": ".MI",
+        "AMS": ".AS",
+        "HEL": ".HE",
+        "STO": ".ST",
+        "SWX": ".SW",
+        "SIX": ".SW",
+        "OSL": ".OL",
+        "CPH": ".CO",
+        "BRU": ".BR",
+        "LIS": ".LS",
+        "VIE": ".VI",
+    }
+    exchange_without_suffix = {"NASDAQ", "NYSE", "AMEX", "ARCA", "CBOE"}
+
+    if ":" in ticker:
+        exchange, symbol = ticker.split(":", 1)
+        symbol = symbol.strip().replace(" ", "").replace("/", "-")
+        if not symbol:
+            return ""
+        if exchange in exchange_suffix_map and "." not in symbol:
+            return f"{symbol}{exchange_suffix_map[exchange]}"
+        if exchange in exchange_without_suffix:
+            return symbol
+        return symbol
+
+    return ticker.replace(" ", "").replace("/", "-")
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
 
 
 def calculate_indicators(dataframe):
@@ -267,6 +348,10 @@ class AnalysisThread(QThread):
         for ticker in self.tickers:
             if self._stop_requested:
                 self.progress.emit("Análisis cancelado.")
+<<<<<<< HEAD
+=======
+                self.finished.emit(results)
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
                 return
 
             self.progress.emit(f"Analizando {ticker}...")
@@ -274,6 +359,10 @@ class AnalysisThread(QThread):
 
             if self._stop_requested:
                 self.progress.emit("Análisis cancelado.")
+<<<<<<< HEAD
+=======
+                self.finished.emit(results)
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
                 return
 
             if stock_data is None:
@@ -357,6 +446,7 @@ class MainWindow(QMainWindow):
         self.B_Carpeta.clicked.connect(self.on_b_carpeta)
         self.B_Ticker.clicked.connect(self.on_b_analizar)
         self.B_Cancelar.clicked.connect(self.on_b_cancelar)
+<<<<<<< HEAD
         self.B_LimpiarResultados.clicked.connect(self.on_b_clear_results)
         self.B_Salir.clicked.connect(self.close)
 
@@ -370,6 +460,31 @@ class MainWindow(QMainWindow):
         if not headers:
             self.E_Resultados.setColumnCount(0)
             self.E_Resultados.setRowCount(0)
+=======
+        self.B_Borrar = getattr(self, "B_Borrar", None)
+        if self.B_Borrar is None:
+            self.B_Borrar = self.B_LimpiarResultados
+        self.B_Borrar.setText("Borrar")
+        self.B_Borrar.clicked.connect(self.on_b_clear_results)
+        self.B_Salir.clicked.connect(self.close)
+
+        self.E_Ticker.installEventFilter(self)
+        self.E_Resultados.setSortingEnabled(True)
+        self.E_Resultados.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+
+        self.analysis_thread = None
+        self.current_tickers = []
+        self.cumulative_results = []
+        self.analysis_clear_results = False
+        self.set_table_headers([])
+
+    def set_table_headers(self, headers):
+        self.E_Resultados.setSortingEnabled(False)
+        if not headers:
+            self.E_Resultados.setColumnCount(0)
+            self.E_Resultados.setRowCount(0)
+            self.E_Resultados.setSortingEnabled(True)
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
             return
         self.E_Resultados.setColumnCount(len(headers))
         self.E_Resultados.setHorizontalHeaderLabels(headers)
@@ -378,8 +493,33 @@ class MainWindow(QMainWindow):
         try:
             header = self.E_Resultados.horizontalHeader()
             header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+<<<<<<< HEAD
         except Exception:
             pass
+=======
+            score_col = headers.index("Score")
+            header.setSortIndicator(score_col, Qt.SortOrder.DescendingOrder)
+        except Exception:
+            pass
+        self.E_Resultados.setSortingEnabled(True)
+
+    def clear_ticker_input(self):
+        try:
+            self._suppress_e_ticker_edit_signal = True
+            if self._ticker_is_model and self.E_Ticker_model is not None:
+                self.E_Ticker_model.setStringList([])
+            elif isinstance(self.E_Ticker, QTextEdit):
+                self.E_Ticker.clear()
+        finally:
+            self._suppress_e_ticker_edit_signal = False
+
+    def eventFilter(self, source, event):
+        if source is self.E_Ticker and event.type() == QEvent.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.on_b_analizar()
+                return True
+        return super().eventFilter(source, event)
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
 
     def append_to_visor(self, message):
         current = self.E_Visor_model.stringList()
@@ -391,7 +531,16 @@ class MainWindow(QMainWindow):
         self.E_Visor_model.setStringList([])
 
     def on_b_lista(self):
+<<<<<<< HEAD
         file_path, _ = QFileDialog.getOpenFileName(self, "Seleccionar Archivo de Tickers", "", "Archivos TXT (*.txt)")
+=======
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar Archivo de Tickers",
+            "",
+            "Archivos TXT (*.txt)",
+        )
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
         if not file_path:
             return
 
@@ -404,6 +553,7 @@ class MainWindow(QMainWindow):
             return
 
         self.current_tickers = tickers
+<<<<<<< HEAD
         # Evitar que los cambios programáticos disparen la limpieza de E_Lista
         self._suppress_e_ticker_edit_signal = True
         if self._ticker_is_model:
@@ -418,6 +568,10 @@ class MainWindow(QMainWindow):
         self._suppress_e_ticker_edit_signal = False
 
         self.start_analysis(tickers)
+=======
+        self.clear_ticker_input()
+        self.start_analysis(tickers, clear_results=False)
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
 
     def get_selected_tracker(self):
         if self._ticker_is_model:
@@ -425,7 +579,14 @@ class MainWindow(QMainWindow):
             if selected_indexes:
                 return selected_indexes[0].data()
             if self.E_Ticker_model and self.E_Ticker_model.rowCount() > 0:
+<<<<<<< HEAD
                 return self.E_Ticker_model.data(self.E_Ticker_model.index(0, 0), Qt.ItemDataRole.DisplayRole)
+=======
+                return self.E_Ticker_model.data(
+                    self.E_Ticker_model.index(0, 0),
+                    Qt.ItemDataRole.DisplayRole,
+                )
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
             return None
         else:
             text = self.E_Ticker.toPlainText().strip()
@@ -438,7 +599,17 @@ class MainWindow(QMainWindow):
         # Extrae y normaliza tickers desde el modelo editable de E_Ticker
         combined = []
         if self._ticker_is_model and self.E_Ticker_model:
+<<<<<<< HEAD
             raw_items = [self.E_Ticker_model.data(self.E_Ticker_model.index(i, 0), Qt.ItemDataRole.DisplayRole) for i in range(self.E_Ticker_model.rowCount())]
+=======
+            raw_items = [
+                self.E_Ticker_model.data(
+                    self.E_Ticker_model.index(i, 0),
+                    Qt.ItemDataRole.DisplayRole,
+                )
+                for i in range(self.E_Ticker_model.rowCount())
+            ]
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
             iterator = raw_items
         else:
             text = self.E_Ticker.toPlainText()
@@ -468,7 +639,15 @@ class MainWindow(QMainWindow):
 
     def on_b_analizar(self):
         if self.analysis_thread and self.analysis_thread.isRunning():
+<<<<<<< HEAD
             QMessageBox.warning(self, "Proceso en curso", "Ya hay un análisis en curso. Cancela antes de iniciar otro.")
+=======
+            QMessageBox.warning(
+                self,
+                "Proceso en curso",
+                "Ya hay un análisis en curso. Cancela antes de iniciar otro.",
+            )
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
             return
 
         tickers = self.parse_tickers_from_model()
@@ -477,6 +656,7 @@ class MainWindow(QMainWindow):
             return
 
         self.append_to_visor(f"Iniciando análisis para {len(tickers)} tickers...")
+<<<<<<< HEAD
         self.start_analysis(tickers)
 
     def start_analysis(self, tickers, clear_results=True):
@@ -487,11 +667,23 @@ class MainWindow(QMainWindow):
             self.set_table_headers([])
         else:
             self.append_to_visor("Iniciando análisis sin borrar resultados previos...")
+=======
+        self.clear_ticker_input()
+        self.start_analysis(tickers, clear_results=False)
+
+    def start_analysis(self, tickers, clear_results=False):
+        self.analysis_clear_results = clear_results
+        if clear_results:
+            self.cumulative_results = []
+            self.set_table_headers([])
+        self.append_to_visor("Iniciando análisis...")
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
 
         self.B_Lista.setEnabled(False)
         self.B_Ticker.setEnabled(False)
         self.B_Cancelar.setEnabled(True)
 
+<<<<<<< HEAD
         if clear_results:
             # Al iniciar análisis, vaciar la ventana E_Ticker
             try:
@@ -504,6 +696,8 @@ class MainWindow(QMainWindow):
             finally:
                 self._suppress_e_ticker_edit_signal = False
 
+=======
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
         self.analysis_thread = AnalysisThread(tickers)
         self.analysis_thread.progress.connect(self.append_to_visor)
         self.analysis_thread.finished.connect(self.on_analysis_finished)
@@ -536,6 +730,7 @@ class MainWindow(QMainWindow):
             self.append_to_visor("No se generaron resultados.")
             return
 
+<<<<<<< HEAD
         sorted_results = sorted(results, key=lambda r: int(r.get("Score", 0)), reverse=True)
         filtered_results = [row for row in sorted_results if int(row.get("Score", 0)) >= 60]
         if self.analysis_clear_results:
@@ -545,15 +740,37 @@ class MainWindow(QMainWindow):
 
         if not self.cumulative_results:
             self.append_to_visor("No se generaron resultados con score >= 60.")
+=======
+        if results:
+            self.cumulative_results.extend(results)
+
+        if not self.cumulative_results:
+            self.append_to_visor("No hay resultados para mostrar.")
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
             return
 
         columns = list(self.cumulative_results[0].keys())
         self.set_table_headers(columns)
+<<<<<<< HEAD
         self.E_Resultados.setRowCount(len(self.cumulative_results))
         for row_idx, row_data in enumerate(self.cumulative_results):
             for col_idx, header in enumerate(columns):
                 item = QTableWidgetItem(str(row_data.get(header, "")))
                 self.E_Resultados.setItem(row_idx, col_idx, item)
+=======
+        self.E_Resultados.setSortingEnabled(False)
+        self.E_Resultados.setRowCount(len(self.cumulative_results))
+        numeric_columns = {"Precio", "Score", "Vol Relativo"}
+        for row_idx, row_data in enumerate(self.cumulative_results):
+            for col_idx, header in enumerate(columns):
+                value = row_data.get(header, "")
+                item = QTableWidgetItem(str(value))
+                if header in numeric_columns:
+                    item.setData(Qt.ItemDataRole.EditRole, value)
+                self.E_Resultados.setItem(row_idx, col_idx, item)
+        self.E_Resultados.setSortingEnabled(True)
+        self.E_Resultados.sortItems(columns.index("Score"), Qt.SortOrder.DescendingOrder)
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
 
         if EXPORT_EXCEL:
             df = pd.DataFrame(self.cumulative_results)
@@ -573,7 +790,15 @@ class MainWindow(QMainWindow):
 
         txt_files = sorted(Path(folder_path).glob("*.txt"))
         if not txt_files:
+<<<<<<< HEAD
             QMessageBox.warning(self, "Advertencia", "No se encontraron archivos .txt en la carpeta seleccionada.")
+=======
+            QMessageBox.warning(
+                self,
+                "Advertencia",
+                "No se encontraron archivos .txt en la carpeta seleccionada.",
+            )
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
             return
 
         self.E_Lista_model.setStringList([folder_path])
@@ -586,7 +811,15 @@ class MainWindow(QMainWindow):
             self.append_to_visor(f"Cargando lista: {txt_file.name} ({len(tickers)} tickers)")
 
         if not all_tickers:
+<<<<<<< HEAD
             QMessageBox.warning(self, "Advertencia", "No se encontraron tickers válidos en las listas de la carpeta.")
+=======
+            QMessageBox.warning(
+                self,
+                "Advertencia",
+                "No se encontraron tickers válidos en las listas de la carpeta.",
+            )
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
             return
 
         # Eliminar duplicados preservando orden
@@ -598,6 +831,7 @@ class MainWindow(QMainWindow):
                 unique_tickers.append(ticker)
 
         self.current_tickers = unique_tickers
+<<<<<<< HEAD
         self._suppress_e_ticker_edit_signal = True
         if self._ticker_is_model and self.E_Ticker_model is not None:
             self.E_Ticker_model.setStringList(unique_tickers)
@@ -609,6 +843,9 @@ class MainWindow(QMainWindow):
             self.E_Ticker.setPlainText("\n".join(unique_tickers))
         self._suppress_e_ticker_edit_signal = False
 
+=======
+        self.clear_ticker_input()
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
         self.start_analysis(unique_tickers, clear_results=False)
 
     def on_b_clear_results(self):
@@ -619,11 +856,15 @@ class MainWindow(QMainWindow):
     def on_b_cancelar(self):
         if self.analysis_thread and self.analysis_thread.isRunning():
             self.analysis_thread.request_stop()
+<<<<<<< HEAD
             self.analysis_thread.terminate()
             self.analysis_thread.wait(1000)
             self.append_to_visor("Se solicitó cancelar el análisis.")
             self.B_Lista.setEnabled(True)
             self.B_Ticker.setEnabled(True)
+=======
+            self.append_to_visor("Cancelando análisis...")
+>>>>>>> a31c634ba290da0229b19a7a8d1bfdbd70726072
             self.B_Cancelar.setEnabled(False)
 
 
