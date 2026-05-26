@@ -52,7 +52,15 @@ INTERVAL = "1d"
 EXPORT_EXCEL = True
 EXCEL_NAME = "SmartMoney_Screener.xlsx"
 APP_DIR = Path(__file__).resolve().parent
-UI_FILE = APP_DIR / "F_Trader_4.ui"
+
+
+def resource_path(filename):
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / filename  # pylint: disable=protected-access
+    return APP_DIR / filename
+
+
+UI_FILE = resource_path("F_Trader_4.ui")
 
 DELAY_BETWEEN_REQUESTS = 1
 TXT_FILE = "Mi_Lista.txt"
