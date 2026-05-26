@@ -9,7 +9,7 @@ import sys
 import time
 import os
 import smtplib
-from datetime import datetime
+from datetime import datetime, time as dt_time
 from email.message import EmailMessage
 from urllib.parse import quote_plus
 
@@ -65,6 +65,12 @@ SMTP_USER = os.getenv("PYTRADER_SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("PYTRADER_SMTP_PASSWORD", "")
 SMTP_FROM = os.getenv("PYTRADER_SMTP_FROM", SMTP_USER)
 SMTP_USE_TLS = os.getenv("PYTRADER_SMTP_TLS", "1") != "0"
+EUROPE_MARKET_START = dt_time(9, 30)
+EUROPE_MARKET_END = dt_time(17, 0)
+US_MARKET_START = dt_time(15, 30)
+US_MARKET_END = dt_time(22, 0)
+LOOP_ACTIVE_START = dt_time(10, 0)
+LOOP_ACTIVE_END = dt_time(21, 0)
 
 
 # =========================================================
@@ -505,9 +511,11 @@ class MainWindow(QMainWindow):
         self.cumulative_results = []
         self.analysis_clear_results = False
         self.analysis_replace_results = False
+        self._loop_market_close_handled = False
         self.lcd_Reloj.setDigitCount(8)
         self.set_table_headers([])
         self.update_lcd_reloj()
+        self.update_market_progress_bars()
 
     def set_table_headers(self, headers):
         self.E_Resultados.setSortingEnabled(False)
@@ -638,9 +646,65 @@ class MainWindow(QMainWindow):
             self.loop_timer.stop()
         self.update_lcd_reloj()
 
+    def _time_to_seconds(self, value):
+        return value.hour * 3600 + value.minute * 60 + value.second
+
+    def _is_loop_time_allowed(self, now=None):
+        now_time = (now or datetime.now()).time()
+        return LOOP_ACTIVE_START <= now_time < LOOP_ACTIVE_END
+
+    def _market_progress_percent(self, now_time, start_time, end_time):
+        start_seconds = self._time_to_seconds(start_time)
+        end_seconds = self._time_to_seconds(end_time)
+        now_seconds = self._time_to_seconds(now_time)
+        if now_seconds <= start_seconds:
+            return 0
+        if now_seconds >= end_seconds:
+            return 100
+        return round(((now_seconds - start_seconds) / (end_seconds - start_seconds)) * 100)
+
+    def _set_market_progress(self, widget_name, percent):
+        progress_bar = getattr(self, widget_name, None)
+        if progress_bar is None:
+            return
+        progress_bar.setValue(percent)
+        progress_bar.setFormat(f"{percent}%")
+
+    def update_market_progress_bars(self):
+        now_time = datetime.now().time()
+        europe_percent = self._market_progress_percent(
+            now_time,
+            EUROPE_MARKET_START,
+            EUROPE_MARKET_END,
+        )
+        us_percent = self._market_progress_percent(
+            now_time,
+            US_MARKET_START,
+            US_MARKET_END,
+        )
+        self._set_market_progress("P_MercadoEuropeo", europe_percent)
+        self._set_market_progress("P_MercadoAmericano", us_percent)
+
+    def _stop_loop_for_market_close(self):
+        if self.loop_timer.isActive():
+            self.loop_timer.stop()
+        if self.analysis_thread and self.analysis_thread.isRunning():
+            self.analysis_thread.request_stop()
+            self.B_Cancelar.setEnabled(False)
+            self.append_to_visor("Cierre de horario: cancelando análisis en curso.")
+        if self.C_Tiempo.isChecked():
+            self.C_Tiempo.setChecked(False)
+        else:
+            self.update_lcd_reloj()
+        self.append_to_visor("Loop detenido: fuera del horario 10:00 - 21:00.")
+
     def _schedule_next_timed_analysis(self):
         if not self.C_Tiempo.isChecked():
             self._stop_loop_timer()
+            return
+
+        if not self._is_loop_time_allowed():
+            self._stop_loop_for_market_close()
             return
 
         minutes = self._get_loop_minutes(show_warning=False)
@@ -660,6 +724,15 @@ class MainWindow(QMainWindow):
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
     def update_lcd_reloj(self):
+        self.update_market_progress_bars()
+        if self.C_Tiempo.isChecked():
+            if self._is_loop_time_allowed():
+                self._loop_market_close_handled = False
+            elif not self._loop_market_close_handled:
+                self._loop_market_close_handled = True
+                self._stop_loop_for_market_close()
+                return
+
         if self.C_Tiempo.isChecked():
             remaining = self.loop_timer.remainingTime()
             if remaining > 0:
@@ -935,13 +1008,24 @@ class MainWindow(QMainWindow):
             reverse=True,
         )
         self.cumulative_results = sorted_results
+        display_results = [
+            row for row in sorted_results
+            if int(row.get("Score", 0)) > MIN_SCORE_TO_DISPLAY
+        ]
 
-        columns = list(sorted_results[0].keys())
+        if not display_results:
+            self.set_table_headers([])
+            self.append_to_visor(
+                f"No hay resultados con Score superior a {MIN_SCORE_TO_DISPLAY}."
+            )
+            return
+
+        columns = list(display_results[0].keys())
         self.set_table_headers(columns)
         self.E_Resultados.setSortingEnabled(False)
-        self.E_Resultados.setRowCount(len(sorted_results))
+        self.E_Resultados.setRowCount(len(display_results))
         numeric_columns = {"Precio", "Score", "Vol Relativo"}
-        for row_idx, row_data in enumerate(sorted_results):
+        for row_idx, row_data in enumerate(display_results):
             for col_idx, header in enumerate(columns):
                 value = row_data.get(header, "")
                 item = QTableWidgetItem(str(value))
@@ -993,6 +1077,15 @@ class MainWindow(QMainWindow):
             self.append_to_visor("Loop desactivado.")
             return
 
+        if not self._is_loop_time_allowed():
+            QMessageBox.warning(
+                self,
+                "Loop fuera de horario",
+                "El loop solo puede activarse entre las 10:00 y las 21:00.",
+            )
+            self.C_Tiempo.setChecked(False)
+            return
+
         if not self._get_loop_minutes(show_warning=True):
             self.C_Tiempo.setChecked(False)
             return
@@ -1006,6 +1099,7 @@ class MainWindow(QMainWindow):
             self.C_Tiempo.setChecked(False)
             return
 
+        self._loop_market_close_handled = False
         self.append_to_visor("Loop activado.")
         if not (self.analysis_thread and self.analysis_thread.isRunning()):
             self._schedule_next_timed_analysis()
@@ -1014,6 +1108,9 @@ class MainWindow(QMainWindow):
     def on_loop_timer_timeout(self):
         self.update_lcd_reloj()
         if not self.C_Tiempo.isChecked():
+            return
+        if not self._is_loop_time_allowed():
+            self._stop_loop_for_market_close()
             return
         if self.analysis_thread and self.analysis_thread.isRunning():
             self._schedule_next_timed_analysis()
