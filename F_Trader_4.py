@@ -519,6 +519,7 @@ class MainWindow(QMainWindow):
         self.cumulative_results = []
         self.analysis_clear_results = False
         self.analysis_replace_results = False
+        self.analysis_show_current_results = False
         self._loop_market_close_handled = False
         self.lcd_Reloj.setDigitCount(8)
         self.set_table_headers([])
@@ -919,12 +920,23 @@ class MainWindow(QMainWindow):
 
         self.append_to_visor(f"Iniciando análisis para {len(tickers)} tickers...")
         self.clear_ticker_input()
-        self.start_analysis(tickers, clear_results=False)
+        self.start_analysis(
+            tickers,
+            clear_results=False,
+            show_current_results=len(tickers) == 1,
+        )
 
-    def start_analysis(self, tickers, clear_results=False, replace_results=False):
+    def start_analysis(
+        self,
+        tickers,
+        clear_results=False,
+        replace_results=False,
+        show_current_results=False,
+    ):
         self._stop_loop_timer()
         self.analysis_clear_results = clear_results
         self.analysis_replace_results = replace_results
+        self.analysis_show_current_results = show_current_results
         if clear_results:
             self.cumulative_results = []
             self.set_table_headers([])
@@ -992,7 +1004,9 @@ class MainWindow(QMainWindow):
         self._schedule_next_timed_analysis()
 
         replace_results = self.analysis_replace_results
+        show_current_results = self.analysis_show_current_results
         self.analysis_replace_results = False
+        self.analysis_show_current_results = False
 
         if replace_results:
             self.cumulative_results = []
@@ -1002,6 +1016,8 @@ class MainWindow(QMainWindow):
                 self.set_table_headers([])
             self.append_to_visor("No se generaron resultados.")
             return
+
+        current_result_ids = {id(row) for row in results}
 
         if results:
             self.cumulative_results.extend(results)
@@ -1018,7 +1034,10 @@ class MainWindow(QMainWindow):
         self.cumulative_results = sorted_results
         display_results = [
             row for row in sorted_results
-            if int(row.get("Score", 0)) > MIN_SCORE_TO_DISPLAY
+            if (
+                int(row.get("Score", 0)) > MIN_SCORE_TO_DISPLAY
+                or (show_current_results and id(row) in current_result_ids)
+            )
         ]
 
         if not display_results:
