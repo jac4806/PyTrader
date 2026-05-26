@@ -50,3 +50,39 @@ de Linux o ejecutar directamente:
 ```bash
 ~/.local/bin/pytrader
 ```
+
+## Crear ejecutable para Linux
+
+Desde Linux:
+
+```bash
+chmod +x build_linux.sh
+./build_linux.sh
+```
+
+El ejecutable queda en:
+
+```bash
+dist/PyTrader
+```
+
+Para crear el ejecutable e instalarlo en el menu de aplicaciones:
+
+```bash
+./build_linux.sh --install
+```
+
+## Crear ejecutable para Windows 11
+
+El `.exe` debe generarse en Windows. Desde PowerShell, en la carpeta del
+proyecto:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1
+```
+
+El ejecutable queda en:
+
+```powershell
+dist\PyTrader.exe
+```

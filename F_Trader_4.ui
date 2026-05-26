@@ -7,18 +7,68 @@
     <x>0</x>
     <y>0</y>
     <width>1095</width>
-    <height>891</height>
+    <height>952</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Mi Trading V1.8</string>
+   <string>Mi Trading V2.0</string>
   </property>
   <widget class="QWidget" name="centralwidget">
+   <widget class="QProgressBar" name="P_MercadoEuropeo">
+    <property name="geometry">
+     <rect>
+      <x>40</x>
+      <y>30</y>
+      <width>500</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="value">
+     <number>0</number>
+    </property>
+    <property name="format">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QProgressBar" name="P_MercadoAmericano">
+    <property name="geometry">
+     <rect>
+      <x>430</x>
+      <y>60</y>
+      <width>500</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QProgressBar::chunk {
+    background-color: orange;
+}</string>
+    </property>
+    <property name="value">
+     <number>0</number>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignmentFlag::AlignCenter</set>
+    </property>
+    <property name="format">
+     <string/>
+    </property>
+   </widget>
    <widget class="QPushButton" name="B_LimpiarResultados">
     <property name="geometry">
      <rect>
-      <x>660</x>
-      <y>800</y>
+      <x>670</x>
+      <y>840</y>
       <width>100</width>
       <height>35</height>
      </rect>
@@ -35,8 +85,8 @@
    <widget class="QPushButton" name="B_Cancelar">
     <property name="geometry">
      <rect>
-      <x>810</x>
-      <y>800</y>
+      <x>820</x>
+      <y>840</y>
       <width>100</width>
       <height>35</height>
      </rect>
@@ -53,8 +103,8 @@
    <widget class="QPushButton" name="B_Salir">
     <property name="geometry">
      <rect>
-      <x>960</x>
-      <y>800</y>
+      <x>970</x>
+      <y>840</y>
       <width>100</width>
       <height>35</height>
      </rect>
@@ -71,8 +121,8 @@
    <widget class="QGroupBox" name="G_Ticker">
     <property name="geometry">
      <rect>
-      <x>30</x>
-      <y>280</y>
+      <x>20</x>
+      <y>320</y>
       <width>281</width>
       <height>80</height>
      </rect>
@@ -89,7 +139,7 @@
      <property name="geometry">
       <rect>
        <x>160</x>
-       <y>28</y>
+       <y>33</y>
        <width>92</width>
        <height>34</height>
       </rect>
@@ -107,7 +157,7 @@
      <property name="geometry">
       <rect>
        <x>20</x>
-       <y>30</y>
+       <y>33</y>
        <width>111</width>
        <height>31</height>
       </rect>
@@ -117,9 +167,9 @@
    <widget class="QGroupBox" name="G_Lista">
     <property name="geometry">
      <rect>
-      <x>30</x>
-      <y>60</y>
-      <width>511</width>
+      <x>20</x>
+      <y>100</y>
+      <width>531</width>
       <height>201</height>
      </rect>
     </property>
@@ -136,8 +186,8 @@
       <rect>
        <x>90</x>
        <y>30</y>
-       <width>411</width>
-       <height>161</height>
+       <width>421</width>
+       <height>156</height>
       </rect>
      </property>
     </widget>
@@ -181,8 +231,8 @@
    <widget class="QGroupBox" name="G_Analisis">
     <property name="geometry">
      <rect>
-      <x>560</x>
-      <y>60</y>
+      <x>570</x>
+      <y>100</y>
       <width>511</width>
       <height>301</height>
      </rect>
@@ -209,8 +259,8 @@
    <widget class="QGroupBox" name="G_Resultados">
     <property name="geometry">
      <rect>
-      <x>10</x>
-      <y>370</y>
+      <x>20</x>
+      <y>410</y>
       <width>1061</width>
       <height>421</height>
      </rect>
@@ -227,9 +277,9 @@
      <property name="geometry">
       <rect>
        <x>10</x>
-       <y>20</y>
+       <y>40</y>
        <width>1031</width>
-       <height>381</height>
+       <height>361</height>
       </rect>
      </property>
     </widget>
@@ -237,8 +287,8 @@
    <widget class="QGroupBox" name="G_Tiempo">
     <property name="geometry">
      <rect>
-      <x>330</x>
-      <y>280</y>
+      <x>340</x>
+      <y>320</y>
       <width>211</width>
       <height>80</height>
      </rect>
@@ -250,7 +300,7 @@
      <property name="geometry">
       <rect>
        <x>30</x>
-       <y>35</y>
+       <y>38</y>
        <width>21</width>
        <height>21</height>
       </rect>
@@ -262,8 +312,8 @@
     <widget class="QTextEdit" name="E_Tiempo">
      <property name="geometry">
       <rect>
-       <x>60</x>
-       <y>30</y>
+       <x>65</x>
+       <y>33</y>
        <width>61</width>
        <height>31</height>
       </rect>
@@ -273,7 +323,7 @@
      <property name="geometry">
       <rect>
        <x>140</x>
-       <y>35</y>
+       <y>38</y>
        <width>71</width>
        <height>18</height>
       </rect>
@@ -291,7 +341,7 @@
    <widget class="QLCDNumber" name="lcd_Reloj">
     <property name="geometry">
      <rect>
-      <x>940</x>
+      <x>960</x>
       <y>10</y>
       <width>121</width>
       <height>41</height>
@@ -303,6 +353,84 @@
      </font>
     </property>
    </widget>
+   <widget class="QLabel" name="label">
+    <property name="geometry">
+     <rect>
+      <x>600</x>
+      <y>37</y>
+      <width>161</width>
+      <height>18</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>MERCADO AMERICANO</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_2">
+    <property name="geometry">
+     <rect>
+      <x>225</x>
+      <y>5</y>
+      <width>141</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>MERCADO EUROPEO</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_3">
+    <property name="geometry">
+     <rect>
+      <x>40</x>
+      <y>5</y>
+      <width>58</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>09:00</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_4">
+    <property name="geometry">
+     <rect>
+      <x>521</x>
+      <y>5</y>
+      <width>41</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>17:00</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_5">
+    <property name="geometry">
+     <rect>
+      <x>383</x>
+      <y>60</y>
+      <width>40</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>15:30</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_6">
+    <property name="geometry">
+     <rect>
+      <x>902</x>
+      <y>37</y>
+      <width>41</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>22:00</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
@@ -310,7 +438,7 @@
      <x>0</x>
      <y>0</y>
      <width>1095</width>
-     <height>21</height>
+     <height>30</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuOpciones">
