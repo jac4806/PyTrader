@@ -1,3 +1,4 @@
+# pylint: disable=C0302
 """Smart Money stock screener with a PyQt6 user interface."""
 
 #*******************************************************************
@@ -956,7 +957,7 @@ class MainWindow(QMainWindow):
         self.analysis_thread.error.connect(self.on_analysis_error)
         self.analysis_thread.start()
 
-    def on_e_ticker_edited(self, *args, **kwargs):
+    def on_e_ticker_edited(self, *args, **kwargs):  # pylint: disable=W0613
         # Si el cambio fue programático, no borramos E_Lista
         if getattr(self, "_suppress_e_ticker_edit_signal", False):
             return
