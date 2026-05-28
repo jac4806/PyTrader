@@ -383,6 +383,7 @@ def send_high_score_email(results):
 
 class AnalysisThread(QThread):
     progress = pyqtSignal(str)
+    result_ready = pyqtSignal(object)
     finished = pyqtSignal(object)
     error = pyqtSignal(str)
 
@@ -417,7 +418,7 @@ class AnalysisThread(QThread):
             try:
                 stock_data = calculate_indicators(stock_data)
                 last = stock_data.iloc[-1]
-                results.append({
+                result = {
                     "Ticker": ticker,
                     "Precio": round(float(last["Close"]), 2),
                     "Signal": str(last["signal"]),
@@ -436,7 +437,9 @@ class AnalysisThread(QThread):
                         if float(last["vol_ma"]) > 0 else 0
                     ),
                     "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                })
+                }
+                results.append(result)
+                self.result_ready.emit(result)
             except Exception as exc:
                 self.progress.emit(f"Error procesando {ticker}: {exc}")
 
@@ -937,9 +940,8 @@ class MainWindow(QMainWindow):
         self.analysis_clear_results = clear_results
         self.analysis_replace_results = replace_results
         self.analysis_show_current_results = show_current_results
-        if clear_results:
-            self.cumulative_results = []
-            self.set_table_headers([])
+        self.cumulative_results = []
+        self.set_table_headers([])
         self.append_to_visor("Iniciando análisis...")
 
         self.B_Lista.setEnabled(False)
@@ -949,6 +951,7 @@ class MainWindow(QMainWindow):
 
         self.analysis_thread = AnalysisThread(tickers)
         self.analysis_thread.progress.connect(self.append_to_visor)
+        self.analysis_thread.result_ready.connect(self.on_analysis_result)
         self.analysis_thread.finished.connect(self.on_analysis_finished)
         self.analysis_thread.error.connect(self.on_analysis_error)
         self.analysis_thread.start()
@@ -995,6 +998,31 @@ class MainWindow(QMainWindow):
         if not QDesktopServices.openUrl(url):
             self.append_to_visor(f"No se pudo abrir Google Finance para {ticker}.")
 
+    def on_analysis_result(self, result):
+        self.cumulative_results.append(result)
+        self._add_result_to_table(result)
+
+    def _add_result_to_table(self, result):
+        if int(result.get("Score", 0)) <= MIN_SCORE_TO_DISPLAY:
+            return
+
+        columns = list(result.keys())
+        if self.E_Resultados.columnCount() == 0:
+            self.set_table_headers(columns)
+
+        self.E_Resultados.setSortingEnabled(False)
+        row_idx = self.E_Resultados.rowCount()
+        self.E_Resultados.insertRow(row_idx)
+        numeric_columns = {"Precio", "Score", "Vol Relativo"}
+        for col_idx, header in enumerate(columns):
+            value = result.get(header, "")
+            item = QTableWidgetItem(str(value))
+            if header in numeric_columns:
+                item.setData(Qt.ItemDataRole.EditRole, value)
+            self.E_Resultados.setItem(row_idx, col_idx, item)
+        self.E_Resultados.setSortingEnabled(True)
+        self.E_Resultados.sortItems(columns.index("Score"), Qt.SortOrder.DescendingOrder)
+
     def on_analysis_finished(self, results):
         self.append_to_visor("Análisis finalizado.")
         self.B_Lista.setEnabled(True)
@@ -1003,24 +1031,23 @@ class MainWindow(QMainWindow):
         self.B_Cancelar.setEnabled(False)
         self._schedule_next_timed_analysis()
 
-        replace_results = self.analysis_replace_results
-        show_current_results = self.analysis_show_current_results
         self.analysis_replace_results = False
         self.analysis_show_current_results = False
 
-        if replace_results:
-            self.cumulative_results = []
+        result_keys = {
+            (row.get("Ticker"), row.get("Fecha"))
+            for row in self.cumulative_results
+        }
+        for row in results:
+            key = (row.get("Ticker"), row.get("Fecha"))
+            if key not in result_keys:
+                self.cumulative_results.append(row)
+                self._add_result_to_table(row)
+                result_keys.add(key)
 
         if not results and not self.cumulative_results:
-            if replace_results:
-                self.set_table_headers([])
             self.append_to_visor("No se generaron resultados.")
             return
-
-        current_result_ids = {id(row) for row in results}
-
-        if results:
-            self.cumulative_results.extend(results)
 
         if not self.cumulative_results:
             self.append_to_visor("No hay resultados para mostrar.")
@@ -1032,35 +1059,11 @@ class MainWindow(QMainWindow):
             reverse=True,
         )
         self.cumulative_results = sorted_results
-        display_results = [
-            row for row in sorted_results
-            if (
-                int(row.get("Score", 0)) > MIN_SCORE_TO_DISPLAY
-                or (show_current_results and id(row) in current_result_ids)
-            )
-        ]
 
-        if not display_results:
-            self.set_table_headers([])
+        if self.E_Resultados.rowCount() == 0:
             self.append_to_visor(
                 f"No hay resultados con Score superior a {MIN_SCORE_TO_DISPLAY}."
             )
-            return
-
-        columns = list(display_results[0].keys())
-        self.set_table_headers(columns)
-        self.E_Resultados.setSortingEnabled(False)
-        self.E_Resultados.setRowCount(len(display_results))
-        numeric_columns = {"Precio", "Score", "Vol Relativo"}
-        for row_idx, row_data in enumerate(display_results):
-            for col_idx, header in enumerate(columns):
-                value = row_data.get(header, "")
-                item = QTableWidgetItem(str(value))
-                if header in numeric_columns:
-                    item.setData(Qt.ItemDataRole.EditRole, value)
-                self.E_Resultados.setItem(row_idx, col_idx, item)
-        self.E_Resultados.setSortingEnabled(True)
-        self.E_Resultados.sortItems(columns.index("Score"), Qt.SortOrder.DescendingOrder)
 
         if EXPORT_EXCEL:
             df = pd.DataFrame(self.cumulative_results)
