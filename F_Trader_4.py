@@ -1,3 +1,4 @@
+# pylint: disable=C0302
 """Smart Money stock screener with a PyQt6 user interface."""
 
 #*******************************************************************
@@ -7,17 +8,23 @@
 #******************************************************************
 import sys
 import time
-from datetime import datetime
+import os
+import smtplib
+from datetime import datetime, time as dt_time
+from email.message import EmailMessage
+from urllib.parse import quote_plus
 
 from PyQt6 import uic
-from PyQt6.QtGui import QTextCursor  # pylint: disable=no-name-in-module
 from PyQt6.QtCore import (  # pylint: disable=no-name-in-module
     Qt,
     QEvent,
+    QUrl,
     QThread,
+    QTimer,
     pyqtSignal,
     QStringListModel,
 )
+from PyQt6.QtGui import QDesktopServices, QTextCursor  # pylint: disable=no-name-in-module
 from PyQt6.QtWidgets import (  # pylint: disable=no-name-in-module
     QApplication,
     QMainWindow,
@@ -45,10 +52,34 @@ INTERVAL = "1d"
 
 EXPORT_EXCEL = True
 EXCEL_NAME = "SmartMoney_Screener.xlsx"
+APP_DIR = Path(__file__).resolve().parent
+
+
+def resource_path(filename):
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / filename  # pylint: disable=protected-access
+    return APP_DIR / filename
+
+
+UI_FILE = resource_path("F_Trader_4.ui")
 
 DELAY_BETWEEN_REQUESTS = 1
 TXT_FILE = "Mi_Lista.txt"
 MIN_SCORE_TO_DISPLAY = 60
+EMAIL_RESULTS_TO = "titogilito64@gmail.com"
+EMAIL_MIN_SCORE = 80
+SMTP_HOST = os.getenv("PYTRADER_SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("PYTRADER_SMTP_PORT", "587"))
+SMTP_USER = os.getenv("PYTRADER_SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("PYTRADER_SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("PYTRADER_SMTP_FROM", SMTP_USER)
+SMTP_USE_TLS = os.getenv("PYTRADER_SMTP_TLS", "1") != "0"
+EUROPE_MARKET_START = dt_time(9, 30)
+EUROPE_MARKET_END = dt_time(17, 0)
+US_MARKET_START = dt_time(15, 30)
+US_MARKET_END = dt_time(22, 0)
+LOOP_ACTIVE_START = dt_time(10, 0)
+LOOP_ACTIVE_END = dt_time(21, 0)
 
 
 # =========================================================
@@ -65,7 +96,7 @@ def download_data_safe(ticker, period="1y", interval="1d", max_retries=3):
     # Sufijos comunes para exchanges europeos (se intentan si no vienen en el ticker)
     eu_suffixes = [
         ".MC", ".PA", ".L", ".DE", ".F", ".AS", ".MI", ".HE", ".ST",
-        ".SW", ".OL", ".CO", ".BR", ".LS", ".VI",
+        ".SW", ".OL", ".CO", ".BR", ".LS", ".VI", ".AX",
     ]
 
     def try_download(sym):
@@ -285,8 +316,75 @@ def calculate_indicators(dataframe):
     return data
 
 
+def build_high_score_email_body(results):
+    lines = [
+        "Resultados del analisis Smart Money con Score superior a "
+        f"{EMAIL_MIN_SCORE}:",
+        "",
+    ]
+
+    for row in results:
+        lines.append(
+            " | ".join(
+                [
+                    f"Ticker: {row.get('Ticker', '')}",
+                    f"Score: {row.get('Score', '')}",
+                    f"Precio: {row.get('Precio', '')}",
+                    f"Signal: {row.get('Signal', '')}",
+                    f"Trend: {row.get('Trend', '')}",
+                    f"CFI Diario: {row.get('CFI Diario', '')}",
+                    f"CFI Semanal: {row.get('CFI Semanal', '')}",
+                    f"Flow: {row.get('Flow', '')}",
+                    f"Smart Money: {row.get('Smart Money', '')}",
+                ]
+            )
+        )
+
+    return "\n".join(lines)
+
+
+def send_high_score_email(results):
+    if not results:
+        return False, "No hay resultados con Score superior a 80 para enviar."
+
+    missing = []
+    if not SMTP_HOST:
+        missing.append("PYTRADER_SMTP_HOST")
+    if not SMTP_USER:
+        missing.append("PYTRADER_SMTP_USER")
+    if not SMTP_PASSWORD:
+        missing.append("PYTRADER_SMTP_PASSWORD")
+    if not SMTP_FROM:
+        missing.append("PYTRADER_SMTP_FROM")
+
+    if missing:
+        return (
+            False,
+            "Correo no enviado: faltan variables SMTP "
+            + ", ".join(missing)
+            + ".",
+        )
+
+    message = EmailMessage()
+    message["From"] = SMTP_FROM
+    message["To"] = EMAIL_RESULTS_TO
+    message["Subject"] = (
+        f"PyTrader: {len(results)} resultados con Score > {EMAIL_MIN_SCORE}"
+    )
+    message.set_content(build_high_score_email_body(results))
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
+        if SMTP_USE_TLS:
+            smtp.starttls()
+        smtp.login(SMTP_USER, SMTP_PASSWORD)
+        smtp.send_message(message)
+
+    return True, f"Correo enviado a {EMAIL_RESULTS_TO} con {len(results)} resultados."
+
+
 class AnalysisThread(QThread):
     progress = pyqtSignal(str)
+    result_ready = pyqtSignal(object)
     finished = pyqtSignal(object)
     error = pyqtSignal(str)
 
@@ -321,7 +419,7 @@ class AnalysisThread(QThread):
             try:
                 stock_data = calculate_indicators(stock_data)
                 last = stock_data.iloc[-1]
-                results.append({
+                result = {
                     "Ticker": ticker,
                     "Precio": round(float(last["Close"]), 2),
                     "Signal": str(last["signal"]),
@@ -340,7 +438,9 @@ class AnalysisThread(QThread):
                         if float(last["vol_ma"]) > 0 else 0
                     ),
                     "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                })
+                }
+                results.append(result)
+                self.result_ready.emit(result)
             except Exception as exc:
                 self.progress.emit(f"Error procesando {ticker}: {exc}")
 
@@ -352,7 +452,7 @@ class AnalysisThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        uic.loadUi("F_Trader_4.ui", self)
+        uic.loadUi(UI_FILE, self)
 
         self.E_Lista_model = QStringListModel()
         self.E_Lista.setModel(self.E_Lista_model)
@@ -401,16 +501,34 @@ class MainWindow(QMainWindow):
         self.B_Borrar.setText("Borrar")
         self.B_Borrar.clicked.connect(self.on_b_clear_results)
         self.B_Salir.clicked.connect(self.close)
+        self.C_Tiempo.toggled.connect(self.on_c_tiempo_toggled)
+        self.E_Tiempo.textChanged.connect(self.on_e_tiempo_edited)
 
         self.E_Ticker.installEventFilter(self)
         self.E_Resultados.setSortingEnabled(True)
         self.E_Resultados.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.E_Resultados.cellDoubleClicked.connect(self.on_result_double_clicked)
 
         self.analysis_thread = None
         self.current_tickers = []
+        self.loop_source_type = None
+        self.loop_source_path = None
+        self.loop_timer = QTimer(self)
+        self.loop_timer.setSingleShot(True)
+        self.loop_timer.timeout.connect(self.on_loop_timer_timeout)
+        self.clock_timer = QTimer(self)
+        self.clock_timer.timeout.connect(self.update_lcd_reloj)
+        self.clock_timer.start(1000)
+        self._suppress_e_tiempo_edit_signal = False
         self.cumulative_results = []
         self.analysis_clear_results = False
+        self.analysis_replace_results = False
+        self.analysis_show_current_results = False
+        self._loop_market_close_handled = False
+        self.lcd_Reloj.setDigitCount(8)
         self.set_table_headers([])
+        self.update_lcd_reloj()
+        self.update_market_progress_bars()
 
     def set_table_headers(self, headers):
         self.E_Resultados.setSortingEnabled(False)
@@ -479,6 +597,218 @@ class MainWindow(QMainWindow):
                 finally:
                     self._suppress_e_ticker_edit_signal = False
 
+    def _get_e_tiempo_text(self):
+        if isinstance(self.E_Tiempo, QTextEdit):
+            return self.E_Tiempo.toPlainText().strip()
+        try:
+            return self.E_Tiempo.text().strip()
+        except Exception:
+            return ""
+
+    def _set_e_tiempo_text(self, text):
+        if isinstance(self.E_Tiempo, QTextEdit):
+            self.E_Tiempo.setPlainText(text)
+            cursor = self.E_Tiempo.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            self.E_Tiempo.setTextCursor(cursor)
+            return
+        try:
+            self.E_Tiempo.setText(text)
+        except Exception:
+            pass
+
+    def _enforce_e_tiempo_numbers(self):
+        current_text = self._get_e_tiempo_text()
+        numeric_text = "".join(ch for ch in current_text if ch.isdigit())
+        if current_text != numeric_text:
+            self._suppress_e_tiempo_edit_signal = True
+            try:
+                self._set_e_tiempo_text(numeric_text)
+            finally:
+                self._suppress_e_tiempo_edit_signal = False
+
+    def _get_loop_minutes(self, show_warning=False):
+        self._enforce_e_tiempo_numbers()
+        minutes_text = self._get_e_tiempo_text()
+        if not minutes_text:
+            if show_warning:
+                QMessageBox.warning(
+                    self,
+                    "Tiempo no indicado",
+                    "Introduce los minutos en E_Tiempo para activar el loop.",
+                )
+            return None
+
+        minutes = int(minutes_text)
+        if minutes <= 0:
+            if show_warning:
+                QMessageBox.warning(
+                    self,
+                    "Tiempo no válido",
+                    "E_Tiempo debe ser mayor que 0 minutos.",
+                )
+            return None
+        return minutes
+
+    def _set_loop_source(self, source_type, source_path):
+        self.loop_source_type = source_type
+        self.loop_source_path = source_path
+
+    def _stop_loop_timer(self):
+        if self.loop_timer.isActive():
+            self.loop_timer.stop()
+        self.update_lcd_reloj()
+
+    def _time_to_seconds(self, value):
+        return value.hour * 3600 + value.minute * 60 + value.second
+
+    def _is_loop_time_allowed(self, now=None):
+        now_time = (now or datetime.now()).time()
+        return LOOP_ACTIVE_START <= now_time < LOOP_ACTIVE_END
+
+    def _market_progress_percent(self, now_time, start_time, end_time):
+        start_seconds = self._time_to_seconds(start_time)
+        end_seconds = self._time_to_seconds(end_time)
+        now_seconds = self._time_to_seconds(now_time)
+        if now_seconds <= start_seconds:
+            return 0
+        if now_seconds >= end_seconds:
+            return 100
+        return round(((now_seconds - start_seconds) / (end_seconds - start_seconds)) * 100)
+
+    def _set_market_progress(self, widget_name, percent):
+        progress_bar = getattr(self, widget_name, None)
+        if progress_bar is None:
+            return
+        progress_bar.setValue(percent)
+        progress_bar.setFormat(f"{percent}%")
+
+    def update_market_progress_bars(self):
+        now_time = datetime.now().time()
+        europe_percent = self._market_progress_percent(
+            now_time,
+            EUROPE_MARKET_START,
+            EUROPE_MARKET_END,
+        )
+        us_percent = self._market_progress_percent(
+            now_time,
+            US_MARKET_START,
+            US_MARKET_END,
+        )
+        self._set_market_progress("P_MercadoEuropeo", europe_percent)
+        self._set_market_progress("P_MercadoAmericano", us_percent)
+
+    def _stop_loop_for_market_close(self):
+        if self.loop_timer.isActive():
+            self.loop_timer.stop()
+        if self.analysis_thread and self.analysis_thread.isRunning():
+            self.analysis_thread.request_stop()
+            self.B_Cancelar.setEnabled(False)
+            self.append_to_visor("Cierre de horario: cancelando análisis en curso.")
+        if self.C_Tiempo.isChecked():
+            self.C_Tiempo.setChecked(False)
+        else:
+            self.update_lcd_reloj()
+        self.append_to_visor("Loop detenido: fuera del horario 10:00 - 21:00.")
+
+    def _schedule_next_timed_analysis(self):
+        if not self.C_Tiempo.isChecked():
+            self._stop_loop_timer()
+            return
+
+        if not self._is_loop_time_allowed():
+            self._stop_loop_for_market_close()
+            return
+
+        minutes = self._get_loop_minutes(show_warning=False)
+        if not minutes or not self.loop_source_type or not self.loop_source_path:
+            self._stop_loop_timer()
+            return
+
+        self.loop_timer.start(minutes * 60 * 1000)
+        self.update_lcd_reloj()
+        self.append_to_visor(f"Próximo análisis automático en {minutes} minutos.")
+
+    def _format_countdown(self, milliseconds):
+        total_seconds = max(0, (milliseconds + 999) // 1000)
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    def update_lcd_reloj(self):
+        self.update_market_progress_bars()
+        if self.C_Tiempo.isChecked():
+            if self._is_loop_time_allowed():
+                self._loop_market_close_handled = False
+            elif not self._loop_market_close_handled:
+                self._loop_market_close_handled = True
+                self._stop_loop_for_market_close()
+                return
+
+        if self.C_Tiempo.isChecked():
+            remaining = self.loop_timer.remainingTime()
+            if remaining > 0:
+                self.lcd_Reloj.display(self._format_countdown(remaining))
+            else:
+                self.lcd_Reloj.display("00:00:00")
+            return
+
+        self.lcd_Reloj.display(datetime.now().strftime("%H:%M:%S"))
+
+    def _load_folder_tickers(self, folder_path, log_files=False):
+        txt_files = sorted(Path(folder_path).glob("*.txt"))
+        if not txt_files:
+            return []
+
+        return self._load_list_tickers(txt_files, log_files=log_files)
+
+    def _load_list_tickers(self, file_paths, log_files=False):
+        all_tickers = []
+        for file_path in file_paths:
+            tickers = load_tickers(str(file_path))
+            all_tickers.extend(tickers)
+            if log_files:
+                self.append_to_visor(
+                    f"Cargando lista: {Path(file_path).name} ({len(tickers)} tickers)"
+                )
+
+        seen = set()
+        unique_tickers = []
+        for ticker in all_tickers:
+            if ticker not in seen:
+                seen.add(ticker)
+                unique_tickers.append(ticker)
+        return unique_tickers
+
+    def _load_loop_tickers(self):
+        if self.loop_source_type == "file":
+            tickers = load_tickers(self.loop_source_path)
+            if not tickers:
+                self.append_to_visor("Loop detenido: la lista no contiene tickers válidos.")
+                return []
+            self.append_to_visor(f"Loop: recargando lista {self.loop_source_path}")
+            return tickers
+
+        if self.loop_source_type == "files":
+            tickers = self._load_list_tickers(self.loop_source_path, log_files=True)
+            if not tickers:
+                self.append_to_visor("Loop detenido: las listas no contienen tickers válidos.")
+                return []
+            self.append_to_visor(f"Loop: recargando {len(self.loop_source_path)} listas")
+            return tickers
+
+        if self.loop_source_type == "folder":
+            tickers = self._load_folder_tickers(self.loop_source_path)
+            if not tickers:
+                self.append_to_visor("Loop detenido: la carpeta no contiene tickers válidos.")
+                return []
+            self.append_to_visor(f"Loop: recargando carpeta {self.loop_source_path}")
+            return tickers
+
+        self.append_to_visor("Loop detenido: selecciona una lista o carpeta.")
+        return []
+
     def eventFilter(self, source, event):
         if source is self.E_Ticker and event.type() == QEvent.Type.KeyPress:
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -496,23 +826,28 @@ class MainWindow(QMainWindow):
         self.E_Visor_model.setStringList([])
 
     def on_b_lista(self):
-        file_path, _ = QFileDialog.getOpenFileName(
+        file_paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "Seleccionar Archivo de Tickers",
+            "Seleccionar Archivos de Tickers",
             "",
             "Archivos TXT (*.txt)",
         )
-        if not file_path:
+        if not file_paths:
             return
 
-        self.E_Lista_model.setStringList([file_path])
-        self.append_to_visor(f"Archivo seleccionado: {file_path}")
+        self.E_Lista_model.setStringList(file_paths)
+        self.append_to_visor(f"Archivos seleccionados: {len(file_paths)}")
 
-        tickers = load_tickers(file_path)
+        tickers = self._load_list_tickers(file_paths, log_files=True)
         if not tickers:
-            QMessageBox.warning(self, "Advertencia", "No se encontraron tickers en el archivo.")
+            QMessageBox.warning(
+                self,
+                "Advertencia",
+                "No se encontraron tickers en los archivos seleccionados.",
+            )
             return
 
+        self._set_loop_source("files", file_paths)
         self.current_tickers = tickers
         self.clear_ticker_input()
         self.start_analysis(tickers, clear_results=False)
@@ -589,26 +924,44 @@ class MainWindow(QMainWindow):
 
         self.append_to_visor(f"Iniciando análisis para {len(tickers)} tickers...")
         self.clear_ticker_input()
-        self.start_analysis(tickers, clear_results=False)
+        self.start_analysis(
+            tickers,
+            clear_results=False,
+            show_current_results=len(tickers) == 1,
+        )
 
-    def start_analysis(self, tickers, clear_results=False):
+    def start_analysis(
+        self,
+        tickers,
+        clear_results=False,
+        replace_results=False,
+        show_current_results=False,
+    ):
+        self._stop_loop_timer()
         self.analysis_clear_results = clear_results
-        if clear_results:
-            self.cumulative_results = []
-            self.set_table_headers([])
+        self.analysis_replace_results = replace_results
+        self.analysis_show_current_results = show_current_results
+        self.cumulative_results = []
+        self.set_table_headers([])
         self.append_to_visor("Iniciando análisis...")
 
         self.B_Lista.setEnabled(False)
+        self.B_Carpeta.setEnabled(False)
         self.B_Ticker.setEnabled(False)
         self.B_Cancelar.setEnabled(True)
 
         self.analysis_thread = AnalysisThread(tickers)
         self.analysis_thread.progress.connect(self.append_to_visor)
+        self.analysis_thread.result_ready.connect(self.on_analysis_result)
         self.analysis_thread.finished.connect(self.on_analysis_finished)
         self.analysis_thread.error.connect(self.on_analysis_error)
         self.analysis_thread.start()
 
+<<<<<<< HEAD
     def on_e_ticker_edited(self, *_args, **_kwargs):
+=======
+    def on_e_ticker_edited(self, *args, **kwargs):  # pylint: disable=W0613
+>>>>>>> 0a186d442071b17e3ac401f3250b7dad4c184801
         # Si el cambio fue programático, no borramos E_Lista
         if getattr(self, "_suppress_e_ticker_edit_signal", False):
             return
@@ -617,6 +970,8 @@ class MainWindow(QMainWindow):
             # Limpiar E_Lista (archivo seleccionado)
             if self.E_Lista_model is not None:
                 self.E_Lista_model.setStringList([])
+            self._set_loop_source(None, None)
+            self._stop_loop_timer()
             # Limpiar visor y otras ventanas de texto
             try:
                 self.clear_visor()
@@ -625,29 +980,82 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def on_result_double_clicked(self, row, _column):
+        ticker_col = None
+        for col in range(self.E_Resultados.columnCount()):
+            header_item = self.E_Resultados.horizontalHeaderItem(col)
+            if header_item and header_item.text() == "Ticker":
+                ticker_col = col
+                break
+
+        if ticker_col is None:
+            return
+
+        item = self.E_Resultados.item(row, ticker_col)
+        if item is None:
+            return
+
+        ticker = item.text().strip()
+        if not ticker:
+            return
+
+        url = QUrl(f"https://www.google.com/finance/beta/?hl=es&q={quote_plus(ticker)}")
+        if not QDesktopServices.openUrl(url):
+            self.append_to_visor(f"No se pudo abrir Google Finance para {ticker}.")
+
+    def on_analysis_result(self, result):
+        self.cumulative_results.append(result)
+        self._add_result_to_table(result)
+
+    def _add_result_to_table(self, result):
+        if int(result.get("Score", 0)) <= MIN_SCORE_TO_DISPLAY:
+            return
+
+        columns = list(result.keys())
+        if self.E_Resultados.columnCount() == 0:
+            self.set_table_headers(columns)
+
+        self.E_Resultados.setSortingEnabled(False)
+        row_idx = self.E_Resultados.rowCount()
+        self.E_Resultados.insertRow(row_idx)
+        numeric_columns = {"Precio", "Score", "Vol Relativo"}
+        for col_idx, header in enumerate(columns):
+            value = result.get(header, "")
+            item = QTableWidgetItem(str(value))
+            if header in numeric_columns:
+                item.setData(Qt.ItemDataRole.EditRole, value)
+            self.E_Resultados.setItem(row_idx, col_idx, item)
+        self.E_Resultados.setSortingEnabled(True)
+        self.E_Resultados.sortItems(columns.index("Score"), Qt.SortOrder.DescendingOrder)
+
     def on_analysis_finished(self, results):
         self.append_to_visor("Análisis finalizado.")
         self.B_Lista.setEnabled(True)
+        self.B_Carpeta.setEnabled(True)
         self.B_Ticker.setEnabled(True)
         self.B_Cancelar.setEnabled(False)
+        self._schedule_next_timed_analysis()
+
+        self.analysis_replace_results = False
+        self.analysis_show_current_results = False
+
+        result_keys = {
+            (row.get("Ticker"), row.get("Fecha"))
+            for row in self.cumulative_results
+        }
+        for row in results:
+            key = (row.get("Ticker"), row.get("Fecha"))
+            if key not in result_keys:
+                self.cumulative_results.append(row)
+                self._add_result_to_table(row)
+                result_keys.add(key)
 
         if not results and not self.cumulative_results:
             self.append_to_visor("No se generaron resultados.")
             return
 
-        filtered_results = [
-            row
-            for row in results
-            if int(row.get("Score", 0)) > MIN_SCORE_TO_DISPLAY
-        ]
-
-        if filtered_results:
-            self.cumulative_results.extend(filtered_results)
-
         if not self.cumulative_results:
-            self.append_to_visor(
-                f"No hay resultados con Score superior a {MIN_SCORE_TO_DISPLAY}."
-            )
+            self.append_to_visor("No hay resultados para mostrar.")
             return
 
         sorted_results = sorted(
@@ -657,20 +1065,10 @@ class MainWindow(QMainWindow):
         )
         self.cumulative_results = sorted_results
 
-        columns = list(sorted_results[0].keys())
-        self.set_table_headers(columns)
-        self.E_Resultados.setSortingEnabled(False)
-        self.E_Resultados.setRowCount(len(sorted_results))
-        numeric_columns = {"Precio", "Score", "Vol Relativo"}
-        for row_idx, row_data in enumerate(sorted_results):
-            for col_idx, header in enumerate(columns):
-                value = row_data.get(header, "")
-                item = QTableWidgetItem(str(value))
-                if header in numeric_columns:
-                    item.setData(Qt.ItemDataRole.EditRole, value)
-                self.E_Resultados.setItem(row_idx, col_idx, item)
-        self.E_Resultados.setSortingEnabled(True)
-        self.E_Resultados.sortItems(columns.index("Score"), Qt.SortOrder.DescendingOrder)
+        if self.E_Resultados.rowCount() == 0:
+            self.append_to_visor(
+                f"No hay resultados con Score superior a {MIN_SCORE_TO_DISPLAY}."
+            )
 
         if EXPORT_EXCEL:
             df = pd.DataFrame(self.cumulative_results)
@@ -680,8 +1078,86 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 self.append_to_visor(f"Error exportando Excel: {exc}")
 
+        high_score_results = [
+            row for row in sorted_results if int(row.get("Score", 0)) > EMAIL_MIN_SCORE
+        ]
+        try:
+            email_sent, email_message = send_high_score_email(high_score_results)
+            self.append_to_visor(email_message)
+            if not email_sent and high_score_results:
+                self.append_to_visor(
+                    "Configura PYTRADER_SMTP_HOST, PYTRADER_SMTP_USER y "
+                    "PYTRADER_SMTP_PASSWORD para activar el envio automatico."
+                )
+        except Exception as exc:
+            self.append_to_visor(f"Error enviando correo: {exc}")
+
     def on_analysis_error(self, message):
         self.append_to_visor(message)
+
+    def on_e_tiempo_edited(self):
+        if getattr(self, "_suppress_e_tiempo_edit_signal", False):
+            return
+        self._enforce_e_tiempo_numbers()
+        if self.C_Tiempo.isChecked() and not (
+            self.analysis_thread and self.analysis_thread.isRunning()
+        ):
+            self._schedule_next_timed_analysis()
+        self.update_lcd_reloj()
+
+    def on_c_tiempo_toggled(self, checked):
+        if not checked:
+            self._stop_loop_timer()
+            self.update_lcd_reloj()
+            self.append_to_visor("Loop desactivado.")
+            return
+
+        if not self._is_loop_time_allowed():
+            QMessageBox.warning(
+                self,
+                "Loop fuera de horario",
+                "El loop solo puede activarse entre las 10:00 y las 21:00.",
+            )
+            self.C_Tiempo.setChecked(False)
+            return
+
+        if not self._get_loop_minutes(show_warning=True):
+            self.C_Tiempo.setChecked(False)
+            return
+
+        if not self.loop_source_type or not self.loop_source_path:
+            QMessageBox.warning(
+                self,
+                "Sin lista o carpeta",
+                "Selecciona una lista o carpeta antes de activar el loop.",
+            )
+            self.C_Tiempo.setChecked(False)
+            return
+
+        self._loop_market_close_handled = False
+        self.append_to_visor("Loop activado.")
+        if not (self.analysis_thread and self.analysis_thread.isRunning()):
+            self._schedule_next_timed_analysis()
+        self.update_lcd_reloj()
+
+    def on_loop_timer_timeout(self):
+        self.update_lcd_reloj()
+        if not self.C_Tiempo.isChecked():
+            return
+        if not self._is_loop_time_allowed():
+            self._stop_loop_for_market_close()
+            return
+        if self.analysis_thread and self.analysis_thread.isRunning():
+            self._schedule_next_timed_analysis()
+            return
+
+        tickers = self._load_loop_tickers()
+        if not tickers:
+            self.C_Tiempo.setChecked(False)
+            return
+
+        self.current_tickers = tickers
+        self.start_analysis(tickers, replace_results=True)
 
     def on_b_carpeta(self):
         folder_path = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta de listas")
@@ -700,13 +1176,9 @@ class MainWindow(QMainWindow):
         self.E_Lista_model.setStringList([folder_path])
         self.append_to_visor(f"Carpeta seleccionada: {folder_path}")
 
-        all_tickers = []
-        for txt_file in txt_files:
-            tickers = load_tickers(str(txt_file))
-            all_tickers.extend(tickers)
-            self.append_to_visor(f"Cargando lista: {txt_file.name} ({len(tickers)} tickers)")
+        unique_tickers = self._load_folder_tickers(folder_path, log_files=True)
 
-        if not all_tickers:
+        if not unique_tickers:
             QMessageBox.warning(
                 self,
                 "Advertencia",
@@ -714,14 +1186,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Eliminar duplicados preservando orden
-        seen = set()
-        unique_tickers = []
-        for ticker in all_tickers:
-            if ticker not in seen:
-                seen.add(ticker)
-                unique_tickers.append(ticker)
-
+        self._set_loop_source("folder", folder_path)
         self.current_tickers = unique_tickers
         self.clear_ticker_input()
         self.start_analysis(unique_tickers, clear_results=False)
