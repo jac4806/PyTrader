@@ -81,6 +81,12 @@ proyecto:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1
 ```
 
+Para crear el ejecutable e instalar accesos directos en el Escritorio y el menu Inicio:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1 -Install
+```
+
 El ejecutable queda en:
 
 ```powershell

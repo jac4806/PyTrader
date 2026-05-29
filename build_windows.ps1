@@ -1,3 +1,7 @@
+param(
+    [switch]$Install
+)
+
 $ErrorActionPreference = "Stop"
 
 $AppDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -25,4 +29,24 @@ if (-not (Test-Path $ExePath)) {
 }
 
 Write-Host "Ejecutable Windows creado en:"
+if ($Install) {
+    $WScript = New-Object -ComObject WScript.Shell
+    $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "PyTrader.lnk"
+    $StartMenuDir = Join-Path ([Environment]::GetFolderPath("Programs")) "PyTrader"
+    $StartMenuShortcut = Join-Path $StartMenuDir "PyTrader.lnk"
+
+    New-Item -ItemType Directory -Force -Path $StartMenuDir | Out-Null
+
+    foreach ($ShortcutPath in @($DesktopShortcut, $StartMenuShortcut)) {
+        $Shortcut = $WScript.CreateShortcut($ShortcutPath)
+        $Shortcut.TargetPath = $ExePath
+        $Shortcut.WorkingDirectory = $AppDir
+        $Shortcut.Description = "Smart Money stock screener"
+        $Shortcut.Save()
+    }
+}
+
 Write-Host $ExePath
+if ($Install) {
+    Write-Host "Instalado tambien con accesos directos en Escritorio y menu Inicio."
+}
