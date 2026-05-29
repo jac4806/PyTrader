@@ -3,7 +3,7 @@
 
 #*******************************************************************
 #
-#               21/05/2026
+#               29/05/2026
 #
 #******************************************************************
 import sys
@@ -66,6 +66,19 @@ UI_FILE = resource_path("F_Trader_4.ui")
 DELAY_BETWEEN_REQUESTS = 1
 TXT_FILE = "Mi_Lista.txt"
 MIN_SCORE_TO_DISPLAY = 60
+DEFAULT_RESULT_HEADERS = [
+    "Ticker",
+    "Precio",
+    "Signal",
+    "Score",
+    "Trend",
+    "CFI Diario",
+    "CFI Semanal",
+    "Flow",
+    "Smart Money",
+    "Vol Relativo",
+    "Fecha",
+]
 EMAIL_RESULTS_TO = "titogilito64@gmail.com"
 EMAIL_MIN_SCORE = 80
 SMTP_HOST = os.getenv("PYTRADER_SMTP_HOST", "")
@@ -425,7 +438,7 @@ class AnalysisThread(QThread):
                     "Signal": str(last["signal"]),
                     "Score": int(last["score"]),
                     "Trend": "SI" if last["trend_up"] else "NO",
-                    "CFI Diario": "COMPRA FUERTE" if last["cfi_up"] else "DEBIL",
+                    "CFI Diario": "FUERTE" if last["cfi_up"] else "DEBIL",
                     "CFI Semanal": "FUERTE" if last["cfi_w_up"] else "DEBIL",
                     "Flow": "COMPRANDO" if last["flow_smooth"] > 0 else "VENDIENDO",
                     "Smart Money": (
@@ -533,17 +546,31 @@ class MainWindow(QMainWindow):
     def set_table_headers(self, headers):
         self.E_Resultados.setSortingEnabled(False)
         if not headers:
-            self.E_Resultados.setColumnCount(0)
-            self.E_Resultados.setRowCount(0)
-            self.E_Resultados.setSortingEnabled(True)
-            return
+            headers = DEFAULT_RESULT_HEADERS
         self.E_Resultados.setColumnCount(len(headers))
         self.E_Resultados.setHorizontalHeaderLabels(headers)
         self.E_Resultados.setRowCount(0)
         # Ajustar tamaño de columnas al tamaño de la ventana
         try:
             header = self.E_Resultados.horizontalHeader()
-            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+
+            column_widths = {
+                "Ticker": 70,
+                "Precio": 70,
+                "Signal": 120,
+                "Score": 70,
+                "Trend": 70,
+                "CFI Diario": 100,
+                "CFI Semanal": 100,
+                "Flow": 100,
+                "Smart Money": 100,
+                "Vol Relativo":100,
+                "Fecha": 129,
+            }
+
+            for col, name in enumerate(headers):
+                self.E_Resultados.setColumnWidth(col, column_widths.get(name, 100))
             score_col = headers.index("Score")
             header.setSortIndicator(score_col, Qt.SortOrder.DescendingOrder)
         except Exception:
@@ -1018,6 +1045,7 @@ class MainWindow(QMainWindow):
         for col_idx, header in enumerate(columns):
             value = result.get(header, "")
             item = QTableWidgetItem(str(value))
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             if header in numeric_columns:
                 item.setData(Qt.ItemDataRole.EditRole, value)
             self.E_Resultados.setItem(row_idx, col_idx, item)
