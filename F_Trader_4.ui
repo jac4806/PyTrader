@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Mi Trading V2.1</string>
+   <string>Mi Trading V2.0</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QProgressBar" name="P_MercadoEuropeo">
@@ -282,6 +282,51 @@
        <height>361</height>
       </rect>
      </property>
+     <column>
+      <property name="text">
+       <string>Ticker</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Señal</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Tendencia</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>CFI Diario</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>CFI Semanal</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Flow</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Smart Money</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Vol.Relativo</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Fecha</string>
+      </property>
+     </column>
     </widget>
    </widget>
    <widget class="QGroupBox" name="G_Tiempo">
