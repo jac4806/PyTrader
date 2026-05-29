@@ -1041,7 +1041,10 @@ class MainWindow(QMainWindow):
         numeric_columns = {"Precio", "Score", "Vol Relativo"}
         for col_idx, header in enumerate(columns):
             value = result.get(header, "")
-            item = QTableWidgetItem(str(value))
+            display_value = str(value)
+            if header == "Fecha":
+                display_value = display_value.split()[0]
+            item = QTableWidgetItem(display_value)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             if header in numeric_columns:
                 item.setData(Qt.ItemDataRole.EditRole, value)
