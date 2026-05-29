@@ -425,7 +425,7 @@ class AnalysisThread(QThread):
                     "Signal": str(last["signal"]),
                     "Score": int(last["score"]),
                     "Trend": "SI" if last["trend_up"] else "NO",
-                    "CFI Diario": "FUERTE" if last["cfi_up"] else "DEBIL",
+                    "CFI Diario": "COMPRA FUERTE" if last["cfi_up"] else "DEBIL",
                     "CFI Semanal": "FUERTE" if last["cfi_w_up"] else "DEBIL",
                     "Flow": "COMPRANDO" if last["flow_smooth"] > 0 else "VENDIENDO",
                     "Smart Money": (
@@ -957,11 +957,7 @@ class MainWindow(QMainWindow):
         self.analysis_thread.error.connect(self.on_analysis_error)
         self.analysis_thread.start()
 
-<<<<<<< HEAD
-    def on_e_ticker_edited(self, *_args, **_kwargs):
-=======
     def on_e_ticker_edited(self, *args, **kwargs):  # pylint: disable=W0613
->>>>>>> 0a186d442071b17e3ac401f3250b7dad4c184801
         # Si el cambio fue programático, no borramos E_Lista
         if getattr(self, "_suppress_e_ticker_edit_signal", False):
             return
