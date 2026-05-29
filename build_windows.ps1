@@ -29,6 +29,7 @@ if (-not (Test-Path $ExePath)) {
 }
 
 Write-Host "Ejecutable Windows creado en:"
+& (Join-Path $AppDir "package_windows.ps1") -ExePath $ExePath
 if ($Install) {
     $WScript = New-Object -ComObject WScript.Shell
     $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "PyTrader.lnk"
