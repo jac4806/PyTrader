@@ -1,13 +1,18 @@
 {
     "version": "0.2.0",
     "configurations": [
+        
         {
-            "name": "Python: F_Trader_4",
+            "name": "Python: F_Trader_4.py",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/F_Trader_4.py",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
+            "python": "${command:python.interpreterPath}",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            },
             "justMyCode": true
         }
     ]
