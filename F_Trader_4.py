@@ -1,11 +1,8 @@
-# pylint: disable=C0302
-"""Smart Money stock screener with a PyQt6 user interface."""
-
 #*******************************************************************
 #
 #               29/05/2026
 #
-#******************************************************************
+##******************************************************************
 import sys
 import time
 import os
@@ -21,19 +18,31 @@ from PyQt6.QtCore import (  # pylint: disable=no-name-in-module
     QUrl,
     QThread,
     QTimer,
+    QTime,
+    QSettings,
     pyqtSignal,
     QStringListModel,
 )
-from PyQt6.QtGui import QDesktopServices, QTextCursor  # pylint: disable=no-name-in-module
+from PyQt6.QtGui import QAction, QDesktopServices, QTextCursor  # pylint: disable=no-name-in-module
 from PyQt6.QtWidgets import (  # pylint: disable=no-name-in-module
     QApplication,
     QMainWindow,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QTableWidgetItem,
     QMessageBox,
     QAbstractItemView,
     QHeaderView,
     QTextEdit,
+    QFormLayout,
+    QVBoxLayout,
+    QComboBox,
+    QSpinBox,
+    QDoubleSpinBox,
+    QCheckBox,
+    QLineEdit,
+    QTimeEdit,
 )
 
 import numpy as np
@@ -93,6 +102,23 @@ US_MARKET_START = dt_time(15, 30)
 US_MARKET_END = dt_time(22, 0)
 LOOP_ACTIVE_START = dt_time(10, 0)
 LOOP_ACTIVE_END = dt_time(21, 0)
+
+DEFAULT_APP_OPTIONS = {
+    "period": PERIOD,
+    "interval": INTERVAL,
+    "delay_between_requests": DELAY_BETWEEN_REQUESTS,
+    "export_excel": EXPORT_EXCEL,
+    "excel_name": EXCEL_NAME,
+    "min_score_to_display": MIN_SCORE_TO_DISPLAY,
+    "email_min_score": EMAIL_MIN_SCORE,
+    "email_results_to": EMAIL_RESULTS_TO,
+    "europe_market_start": EUROPE_MARKET_START,
+    "europe_market_end": EUROPE_MARKET_END,
+    "us_market_start": US_MARKET_START,
+    "us_market_end": US_MARKET_END,
+    "loop_active_start": LOOP_ACTIVE_START,
+    "loop_active_end": LOOP_ACTIVE_END,
+}
 
 
 # =========================================================
@@ -358,7 +384,7 @@ def build_high_score_email_body(results):
 
 def send_high_score_email(results):
     if not results:
-        return False, "No hay resultados con Score superior a 80 para enviar."
+        return False, f"No hay resultados con Score superior a {EMAIL_MIN_SCORE} para enviar."
 
     missing = []
     if not SMTP_HOST:
@@ -393,6 +419,139 @@ def send_high_score_email(results):
         smtp.send_message(message)
 
     return True, f"Correo enviado a {EMAIL_RESULTS_TO} con {len(results)} resultados."
+
+
+def time_to_text(value):
+    return value.strftime("%H:%M")
+
+
+def text_to_time(value, fallback):
+    try:
+        return datetime.strptime(str(value), "%H:%M").time()
+    except (TypeError, ValueError):
+        return fallback
+
+
+def qt_time_from_python(value):
+    return QTime(value.hour, value.minute, value.second)
+
+
+def python_time_from_qt(value):
+    return dt_time(value.hour(), value.minute(), value.second())
+
+
+class OptionsDialog(QDialog):
+    def __init__(self, options, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Opciones")
+        self.setModal(True)
+
+        self.period = QComboBox()
+        self.period.addItems(["1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"])
+        self.period.setEditable(True)
+
+        self.interval = QComboBox()
+        self.interval.addItems(["1d", "5d", "1wk", "1mo"])
+        self.interval.setEditable(True)
+
+        self.delay = QDoubleSpinBox()
+        self.delay.setRange(0, 60)
+        self.delay.setDecimals(1)
+        self.delay.setSuffix(" s")
+
+        self.export_excel = QCheckBox()
+        self.excel_name = QLineEdit()
+
+        self.min_score_table = QSpinBox()
+        self.min_score_table.setRange(0, 100)
+
+        self.min_score_email = QSpinBox()
+        self.min_score_email.setRange(0, 100)
+
+        self.email_to = QLineEdit()
+
+        self.europe_start = QTimeEdit()
+        self.europe_end = QTimeEdit()
+        self.us_start = QTimeEdit()
+        self.us_end = QTimeEdit()
+        self.loop_start = QTimeEdit()
+        self.loop_end = QTimeEdit()
+        for widget in (
+            self.europe_start,
+            self.europe_end,
+            self.us_start,
+            self.us_end,
+            self.loop_start,
+            self.loop_end,
+        ):
+            widget.setDisplayFormat("HH:mm")
+
+        form = QFormLayout()
+        form.addRow("Periodo de datos", self.period)
+        form.addRow("Intervalo de datos", self.interval)
+        form.addRow("Espera entre tickers", self.delay)
+        form.addRow("Exportar Excel", self.export_excel)
+        form.addRow("Nombre Excel", self.excel_name)
+        form.addRow("Score minimo en tabla", self.min_score_table)
+        form.addRow("Score minimo para email", self.min_score_email)
+        form.addRow("Email resultados", self.email_to)
+        form.addRow("Mercado Europa inicio", self.europe_start)
+        form.addRow("Mercado Europa fin", self.europe_end)
+        form.addRow("Mercado USA inicio", self.us_start)
+        form.addRow("Mercado USA fin", self.us_end)
+        form.addRow("Loop activo inicio", self.loop_start)
+        form.addRow("Loop activo fin", self.loop_end)
+
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+            | QDialogButtonBox.StandardButton.RestoreDefaults
+        )
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        self.buttons.button(
+            QDialogButtonBox.StandardButton.RestoreDefaults
+        ).clicked.connect(lambda: self.set_options(DEFAULT_APP_OPTIONS))
+
+        layout = QVBoxLayout()
+        layout.addLayout(form)
+        layout.addWidget(self.buttons)
+        self.setLayout(layout)
+        self.set_options(options)
+
+    def set_options(self, options):
+        self.period.setCurrentText(str(options["period"]))
+        self.interval.setCurrentText(str(options["interval"]))
+        self.delay.setValue(float(options["delay_between_requests"]))
+        self.export_excel.setChecked(bool(options["export_excel"]))
+        self.excel_name.setText(str(options["excel_name"]))
+        self.min_score_table.setValue(int(options["min_score_to_display"]))
+        self.min_score_email.setValue(int(options["email_min_score"]))
+        self.email_to.setText(str(options["email_results_to"]))
+        self.europe_start.setTime(qt_time_from_python(options["europe_market_start"]))
+        self.europe_end.setTime(qt_time_from_python(options["europe_market_end"]))
+        self.us_start.setTime(qt_time_from_python(options["us_market_start"]))
+        self.us_end.setTime(qt_time_from_python(options["us_market_end"]))
+        self.loop_start.setTime(qt_time_from_python(options["loop_active_start"]))
+        self.loop_end.setTime(qt_time_from_python(options["loop_active_end"]))
+
+    def options(self):
+        return {
+            "period": self.period.currentText().strip() or DEFAULT_APP_OPTIONS["period"],
+            "interval": self.interval.currentText().strip() or DEFAULT_APP_OPTIONS["interval"],
+            "delay_between_requests": self.delay.value(),
+            "export_excel": self.export_excel.isChecked(),
+            "excel_name": self.excel_name.text().strip() or DEFAULT_APP_OPTIONS["excel_name"],
+            "min_score_to_display": self.min_score_table.value(),
+            "email_min_score": self.min_score_email.value(),
+            "email_results_to": self.email_to.text().strip(),
+            "europe_market_start": python_time_from_qt(self.europe_start.time()),
+            "europe_market_end": python_time_from_qt(self.europe_end.time()),
+            "us_market_start": python_time_from_qt(self.us_start.time()),
+            "us_market_end": python_time_from_qt(self.us_end.time()),
+            "loop_active_start": python_time_from_qt(self.loop_start.time()),
+            "loop_active_end": python_time_from_qt(self.loop_end.time()),
+        }
 
 
 class AnalysisThread(QThread):
@@ -466,6 +625,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         uic.loadUi(UI_FILE, self)
+        self.settings = QSettings("PyTrader", "PyTrader")
+        self.app_options = self.load_app_options()
+        self.apply_app_options(self.app_options, save=False)
+        self.setup_options_menu()
 
         self.E_Lista_model = QStringListModel()
         self.E_Lista.setModel(self.E_Lista_model)
@@ -542,6 +705,113 @@ class MainWindow(QMainWindow):
         self.set_table_headers([])
         self.update_lcd_reloj()
         self.update_market_progress_bars()
+
+    def setup_options_menu(self):
+        self.action_configurar_opciones = QAction("Configurar...", self)
+        self.action_configurar_opciones.triggered.connect(self.on_configure_options)
+        self.menuOpciones.addAction(self.action_configurar_opciones)
+
+    def load_app_options(self):
+        options = DEFAULT_APP_OPTIONS.copy()
+        options["period"] = self.settings.value("period", options["period"])
+        options["interval"] = self.settings.value("interval", options["interval"])
+        options["delay_between_requests"] = float(
+            self.settings.value(
+                "delay_between_requests",
+                options["delay_between_requests"],
+            )
+        )
+        options["export_excel"] = self._settings_bool(
+            "export_excel",
+            options["export_excel"],
+        )
+        options["excel_name"] = self.settings.value("excel_name", options["excel_name"])
+        options["min_score_to_display"] = int(
+            self.settings.value(
+                "min_score_to_display",
+                options["min_score_to_display"],
+            )
+        )
+        options["email_min_score"] = int(
+            self.settings.value("email_min_score", options["email_min_score"])
+        )
+        options["email_results_to"] = self.settings.value(
+            "email_results_to",
+            options["email_results_to"],
+        )
+
+        for key in (
+            "europe_market_start",
+            "europe_market_end",
+            "us_market_start",
+            "us_market_end",
+            "loop_active_start",
+            "loop_active_end",
+        ):
+            options[key] = text_to_time(
+                self.settings.value(key, time_to_text(options[key])),
+                DEFAULT_APP_OPTIONS[key],
+            )
+        return options
+
+    def _settings_bool(self, key, default):
+        value = self.settings.value(key, default)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "si", "sí"}
+
+    def save_app_options(self, options):
+        for key, value in options.items():
+            if isinstance(value, dt_time):
+                self.settings.setValue(key, time_to_text(value))
+            else:
+                self.settings.setValue(key, value)
+        self.settings.sync()
+
+    def apply_app_options(self, options, save=True):
+        global PERIOD, INTERVAL, DELAY_BETWEEN_REQUESTS, EXPORT_EXCEL, EXCEL_NAME
+        global MIN_SCORE_TO_DISPLAY, EMAIL_MIN_SCORE, EMAIL_RESULTS_TO
+        global EUROPE_MARKET_START, EUROPE_MARKET_END, US_MARKET_START, US_MARKET_END
+        global LOOP_ACTIVE_START, LOOP_ACTIVE_END
+
+        PERIOD = str(options["period"])
+        INTERVAL = str(options["interval"])
+        DELAY_BETWEEN_REQUESTS = float(options["delay_between_requests"])
+        EXPORT_EXCEL = bool(options["export_excel"])
+        EXCEL_NAME = str(options["excel_name"])
+        MIN_SCORE_TO_DISPLAY = int(options["min_score_to_display"])
+        EMAIL_MIN_SCORE = int(options["email_min_score"])
+        EMAIL_RESULTS_TO = str(options["email_results_to"])
+        EUROPE_MARKET_START = options["europe_market_start"]
+        EUROPE_MARKET_END = options["europe_market_end"]
+        US_MARKET_START = options["us_market_start"]
+        US_MARKET_END = options["us_market_end"]
+        LOOP_ACTIVE_START = options["loop_active_start"]
+        LOOP_ACTIVE_END = options["loop_active_end"]
+
+        self.app_options = options.copy()
+        if save:
+            self.save_app_options(self.app_options)
+            self.refresh_results_table()
+            self.update_market_progress_bars()
+            self.update_lcd_reloj()
+
+    def refresh_results_table(self):
+        if not hasattr(self, "E_Resultados"):
+            return
+        self.set_table_headers(DEFAULT_RESULT_HEADERS)
+        for result in self.cumulative_results:
+            self._add_result_to_table(result)
+
+    def on_configure_options(self):
+        dialog = OptionsDialog(self.app_options, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self.apply_app_options(dialog.options(), save=True)
+        self.append_to_visor(
+            f"Opciones actualizadas. Score minimo en tabla: {MIN_SCORE_TO_DISPLAY}."
+        )
 
     def set_table_headers(self, headers):
         self.E_Resultados.setSortingEnabled(False)
@@ -1044,7 +1314,10 @@ class MainWindow(QMainWindow):
         numeric_columns = {"Precio", "Score", "Vol Relativo"}
         for col_idx, header in enumerate(columns):
             value = result.get(header, "")
-            item = QTableWidgetItem(str(value))
+            display_value = str(value)
+            if header == "Fecha":
+                display_value = display_value.split()[0]
+            item = QTableWidgetItem(display_value)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             if header in numeric_columns:
                 item.setData(Qt.ItemDataRole.EditRole, value)
