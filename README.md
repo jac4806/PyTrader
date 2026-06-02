@@ -19,7 +19,9 @@ El instalador crea:
 ## Correo de resultados
 
 Al finalizar el analisis, la aplicacion envia a `titogilito64@gmail.com` los
-resultados con `Score` superior a `80` si estan configuradas estas variables:
+resultados con `Score` superior a `80` si estan configuradas estas variables.
+Puedes definirlas en el entorno del sistema o crear un archivo `.env` en la
+carpeta del proyecto usando `.env.example` como plantilla:
 
 ```bash
 PYTRADER_SMTP_HOST=smtp.gmail.com
@@ -28,6 +30,9 @@ PYTRADER_SMTP_USER=tu_correo@gmail.com
 PYTRADER_SMTP_PASSWORD=tu_password_de_aplicacion
 PYTRADER_SMTP_FROM=tu_correo@gmail.com
 ```
+
+Para Gmail, `PYTRADER_SMTP_PASSWORD` debe ser una contrasena de aplicacion, no
+la contrasena normal de la cuenta.
 
 ## Instalar en Linux
 

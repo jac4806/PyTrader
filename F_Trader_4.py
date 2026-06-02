@@ -64,6 +64,25 @@ EXCEL_NAME = "SmartMoney_Screener.xlsx"
 APP_DIR = Path(__file__).resolve().parent
 
 
+def load_env_file(path):
+    if not path.exists():
+        return
+
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"\'')
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+load_env_file(APP_DIR / ".env")
+
+
 def resource_path(filename):
     if getattr(sys, "frozen", False):
         return Path(sys._MEIPASS) / filename  # pylint: disable=protected-access
