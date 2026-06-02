@@ -65,6 +65,6 @@ El instalador copia PyTrader.exe a %LOCALAPPDATA%\PyTrader y crea accesos direct
 en el Escritorio y en el menu Inicio.
 '@ | Set-Content -LiteralPath (Join-Path $PackageDir "README.txt") -Encoding ASCII
 
-Compress-Archive -LiteralPath (Join-Path $PackageDir "*") -DestinationPath $ZipPath -Force
+Compress-Archive -Path (Join-Path $PackageDir "*") -DestinationPath $ZipPath -Force
 Write-Host "Instalable Windows 11 creado en:"
 Write-Host $ZipPath

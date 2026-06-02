@@ -23,7 +23,13 @@ from PyQt6.QtCore import (  # pylint: disable=no-name-in-module
     pyqtSignal,
     QStringListModel,
 )
-from PyQt6.QtGui import QAction, QDesktopServices, QTextCursor  # pylint: disable=no-name-in-module
+from PyQt6.QtGui import (  # pylint: disable=no-name-in-module
+    QAction,
+    QBrush,
+    QColor,
+    QDesktopServices,
+    QTextCursor,
+)
 from PyQt6.QtWidgets import (  # pylint: disable=no-name-in-module
     QApplication,
     QMainWindow,
@@ -460,10 +466,14 @@ def python_time_from_qt(value):
 
 
 class OptionsDialog(QDialog):
+    option_changed = pyqtSignal(object)
+
     def __init__(self, options, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Opciones")
         self.setModal(True)
+        if parent is not None:
+            self.setStyleSheet(parent.styleSheet())
 
         self.period = QComboBox()
         self.period.addItems(["1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"])
@@ -489,20 +499,9 @@ class OptionsDialog(QDialog):
 
         self.email_to = QLineEdit()
 
-        self.europe_start = QTimeEdit()
-        self.europe_end = QTimeEdit()
-        self.us_start = QTimeEdit()
-        self.us_end = QTimeEdit()
         self.loop_start = QTimeEdit()
         self.loop_end = QTimeEdit()
-        for widget in (
-            self.europe_start,
-            self.europe_end,
-            self.us_start,
-            self.us_end,
-            self.loop_start,
-            self.loop_end,
-        ):
+        for widget in (self.loop_start, self.loop_end):
             widget.setDisplayFormat("HH:mm")
 
         form = QFormLayout()
@@ -514,10 +513,6 @@ class OptionsDialog(QDialog):
         form.addRow("Score minimo en tabla", self.min_score_table)
         form.addRow("Score minimo para email", self.min_score_email)
         form.addRow("Email resultados", self.email_to)
-        form.addRow("Mercado Europa inicio", self.europe_start)
-        form.addRow("Mercado Europa fin", self.europe_end)
-        form.addRow("Mercado USA inicio", self.us_start)
-        form.addRow("Mercado USA fin", self.us_end)
         form.addRow("Loop activo inicio", self.loop_start)
         form.addRow("Loop activo fin", self.loop_end)
 
@@ -530,13 +525,33 @@ class OptionsDialog(QDialog):
         self.buttons.rejected.connect(self.reject)
         self.buttons.button(
             QDialogButtonBox.StandardButton.RestoreDefaults
-        ).clicked.connect(lambda: self.set_options(DEFAULT_APP_OPTIONS))
+        ).clicked.connect(self.restore_defaults)
 
         layout = QVBoxLayout()
         layout.addLayout(form)
         layout.addWidget(self.buttons)
         self.setLayout(layout)
         self.set_options(options)
+        self._connect_immediate_updates()
+
+    def _connect_immediate_updates(self):
+        for widget in (self.period, self.interval):
+            widget.currentTextChanged.connect(self._emit_options_changed)
+        self.delay.valueChanged.connect(self._emit_options_changed)
+        self.export_excel.toggled.connect(self._emit_options_changed)
+        self.excel_name.textChanged.connect(self._emit_options_changed)
+        self.min_score_table.valueChanged.connect(self._emit_options_changed)
+        self.min_score_email.valueChanged.connect(self._emit_options_changed)
+        self.email_to.textChanged.connect(self._emit_options_changed)
+        self.loop_start.timeChanged.connect(self._emit_options_changed)
+        self.loop_end.timeChanged.connect(self._emit_options_changed)
+
+    def _emit_options_changed(self):
+        self.option_changed.emit(self.options())
+
+    def restore_defaults(self):
+        self.set_options(DEFAULT_APP_OPTIONS)
+        self._emit_options_changed()
 
     def set_options(self, options):
         self.period.setCurrentText(str(options["period"]))
@@ -547,10 +562,6 @@ class OptionsDialog(QDialog):
         self.min_score_table.setValue(int(options["min_score_to_display"]))
         self.min_score_email.setValue(int(options["email_min_score"]))
         self.email_to.setText(str(options["email_results_to"]))
-        self.europe_start.setTime(qt_time_from_python(options["europe_market_start"]))
-        self.europe_end.setTime(qt_time_from_python(options["europe_market_end"]))
-        self.us_start.setTime(qt_time_from_python(options["us_market_start"]))
-        self.us_end.setTime(qt_time_from_python(options["us_market_end"]))
         self.loop_start.setTime(qt_time_from_python(options["loop_active_start"]))
         self.loop_end.setTime(qt_time_from_python(options["loop_active_end"]))
 
@@ -564,10 +575,10 @@ class OptionsDialog(QDialog):
             "min_score_to_display": self.min_score_table.value(),
             "email_min_score": self.min_score_email.value(),
             "email_results_to": self.email_to.text().strip(),
-            "europe_market_start": python_time_from_qt(self.europe_start.time()),
-            "europe_market_end": python_time_from_qt(self.europe_end.time()),
-            "us_market_start": python_time_from_qt(self.us_start.time()),
-            "us_market_end": python_time_from_qt(self.us_end.time()),
+            "europe_market_start": DEFAULT_APP_OPTIONS["europe_market_start"],
+            "europe_market_end": DEFAULT_APP_OPTIONS["europe_market_end"],
+            "us_market_start": DEFAULT_APP_OPTIONS["us_market_start"],
+            "us_market_end": DEFAULT_APP_OPTIONS["us_market_end"],
             "loop_active_start": python_time_from_qt(self.loop_start.time()),
             "loop_active_end": python_time_from_qt(self.loop_end.time()),
         }
@@ -644,6 +655,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         uic.loadUi(UI_FILE, self)
+        self.apply_visual_style()
         self.settings = QSettings("PyTrader", "PyTrader")
         self.app_options = self.load_app_options()
         self.apply_app_options(self.app_options, save=False)
@@ -703,6 +715,12 @@ class MainWindow(QMainWindow):
         self.E_Resultados.setSortingEnabled(True)
         self.E_Resultados.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.E_Resultados.cellDoubleClicked.connect(self.on_result_double_clicked)
+        self.E_Resultados.setAlternatingRowColors(True)
+        self.E_Resultados.setShowGrid(False)
+        self.E_Resultados.verticalHeader().setVisible(False)
+        self.E_Resultados.verticalHeader().setDefaultSectionSize(30)
+        self.E_Lista.setAlternatingRowColors(True)
+        self.E_Visor.setAlternatingRowColors(True)
 
         self.analysis_thread = None
         self.current_tickers = []
@@ -721,9 +739,213 @@ class MainWindow(QMainWindow):
         self.analysis_show_current_results = False
         self._loop_market_close_handled = False
         self.lcd_Reloj.setDigitCount(8)
+        if hasattr(self, "lcd_Loop"):
+            self.lcd_Loop.setDigitCount(8)
         self.set_table_headers([])
         self.update_lcd_reloj()
         self.update_market_progress_bars()
+
+    def apply_visual_style(self):
+        self.setStyleSheet(
+            """
+            QMainWindow, QWidget#centralwidget {
+                background-color: #f3f6f8;
+                color: #17212b;
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-size: 10pt;
+            }
+
+            QMenuBar {
+                background-color: #ffffff;
+                border-bottom: 1px solid #d6dde4;
+                padding: 3px 8px;
+            }
+
+            QMenuBar::item {
+                background: transparent;
+                padding: 5px 10px;
+                border-radius: 4px;
+            }
+
+            QMenuBar::item:selected {
+                background-color: #e8eef4;
+            }
+
+            QMenu {
+                background-color: #ffffff;
+                border: 1px solid #cbd4dd;
+                padding: 4px;
+            }
+
+            QMenu::item {
+                padding: 6px 28px 6px 12px;
+            }
+
+            QMenu::item:selected {
+                background-color: #e5f0f8;
+                color: #0f3b57;
+            }
+
+            QGroupBox {
+                background-color: #ffffff;
+                border: 1px solid #cbd6df;
+                border-radius: 7px;
+                margin-top: 15px;
+                font-weight: 600;
+                color: #243442;
+            }
+
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                left: 14px;
+                padding: 0 7px;
+                color: #0f5f87;
+                background-color: #f3f6f8;
+            }
+
+            QPushButton {
+                background-color: #176b8f;
+                color: #ffffff;
+                border: 1px solid #145a78;
+                border-radius: 6px;
+                padding: 7px 12px;
+                font-weight: 600;
+            }
+
+            QPushButton:hover {
+                background-color: #1e7fa8;
+            }
+
+            QPushButton:pressed {
+                background-color: #11506c;
+            }
+
+            QPushButton:disabled {
+                background-color: #b8c3cb;
+                border-color: #aab5bd;
+                color: #f2f4f5;
+            }
+
+            QPushButton#B_LimpiarResultados {
+                background-color: #5b6670;
+                border-color: #4d5962;
+            }
+
+            QPushButton#B_Cancelar {
+                background-color: #b85252;
+                border-color: #964141;
+            }
+
+            QPushButton#B_Salir {
+                background-color: #34404a;
+                border-color: #2b353d;
+            }
+
+            QPushButton#B_Lista,
+            QPushButton#B_Carpeta {
+                background-color: #eef4f8;
+                color: #17364a;
+                border-color: #b7c7d2;
+                padding: 0;
+            }
+
+            QTextEdit, QListView, QTableWidget, QLineEdit, QComboBox, QSpinBox,
+            QDoubleSpinBox, QTimeEdit {
+                background-color: #fbfdff;
+                border: 1px solid #c5d0d9;
+                border-radius: 5px;
+                selection-background-color: #cfe7f5;
+                selection-color: #102433;
+            }
+
+            QTextEdit:focus, QListView:focus, QTableWidget:focus, QLineEdit:focus,
+            QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTimeEdit:focus {
+                border: 1px solid #2687b2;
+            }
+
+            QListView::item {
+                min-height: 24px;
+                padding: 3px 7px;
+            }
+
+            QListView::item:alternate, QTableWidget {
+                alternate-background-color: #f5f9fc;
+            }
+
+            QListView::item:selected {
+                background-color: #d6edf7;
+                color: #0d3349;
+            }
+
+            QTableWidget {
+                gridline-color: #d9e2e9;
+                border-radius: 6px;
+            }
+
+            QTableWidget::item {
+                padding: 5px 7px;
+                border-bottom: 1px solid #edf1f4;
+            }
+
+            QTableWidget::item:selected {
+                background-color: #cfe7f5;
+                color: #102433;
+            }
+
+            QHeaderView::section {
+                background-color: #20313f;
+                color: #ffffff;
+                border: 0;
+                border-right: 1px solid #344858;
+                padding: 8px 7px;
+                font-weight: 600;
+            }
+
+            QProgressBar {
+                background-color: #dfe7ed;
+                border: 1px solid #c3cdd6;
+                border-radius: 6px;
+                text-align: center;
+                color: #243442;
+                font-weight: 600;
+            }
+
+            QProgressBar::chunk {
+                background-color: #2d9c72;
+                border-radius: 5px;
+            }
+
+            QProgressBar#P_MercadoAmericano::chunk {
+                background-color: #e29b39;
+            }
+
+            QLCDNumber {
+                background-color: #18232e;
+                color: #bdefff;
+                border: 1px solid #0d151c;
+                border-radius: 6px;
+            }
+
+            QCheckBox::indicator {
+                width: 17px;
+                height: 17px;
+                border: 1px solid #9fb0bd;
+                border-radius: 4px;
+                background-color: #ffffff;
+            }
+
+            QCheckBox::indicator:checked {
+                background-color: #176b8f;
+                border-color: #176b8f;
+            }
+
+            QLabel {
+                color: #2d3e4b;
+                font-weight: 600;
+            }
+            """
+        )
 
     def setup_options_menu(self):
         self.action_configurar_opciones = QAction("Configurar...", self)
@@ -760,10 +982,6 @@ class MainWindow(QMainWindow):
         )
 
         for key in (
-            "europe_market_start",
-            "europe_market_end",
-            "us_market_start",
-            "us_market_end",
             "loop_active_start",
             "loop_active_end",
         ):
@@ -824,6 +1042,7 @@ class MainWindow(QMainWindow):
 
     def on_configure_options(self):
         dialog = OptionsDialog(self.app_options, self)
+        dialog.option_changed.connect(lambda options: self.apply_app_options(options, save=True))
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
@@ -1025,7 +1244,10 @@ class MainWindow(QMainWindow):
             self.C_Tiempo.setChecked(False)
         else:
             self.update_lcd_reloj()
-        self.append_to_visor("Loop detenido: fuera del horario 10:00 - 21:00.")
+        self.append_to_visor(
+            f"Loop detenido: fuera del horario {time_to_text(LOOP_ACTIVE_START)} - "
+            f"{time_to_text(LOOP_ACTIVE_END)}."
+        )
 
     def _schedule_next_timed_analysis(self):
         if not self.C_Tiempo.isChecked():
@@ -1054,6 +1276,8 @@ class MainWindow(QMainWindow):
 
     def update_lcd_reloj(self):
         self.update_market_progress_bars()
+        self.lcd_Reloj.display(datetime.now().strftime("%H:%M:%S"))
+
         if self.C_Tiempo.isChecked():
             if self._is_loop_time_allowed():
                 self._loop_market_close_handled = False
@@ -1062,15 +1286,19 @@ class MainWindow(QMainWindow):
                 self._stop_loop_for_market_close()
                 return
 
+        loop_lcd = getattr(self, "lcd_Loop", None)
+        if loop_lcd is None:
+            return
+
         if self.C_Tiempo.isChecked():
             remaining = self.loop_timer.remainingTime()
             if remaining > 0:
-                self.lcd_Reloj.display(self._format_countdown(remaining))
+                loop_lcd.display(self._format_countdown(remaining))
             else:
-                self.lcd_Reloj.display("00:00:00")
+                loop_lcd.display("00:00:00")
             return
 
-        self.lcd_Reloj.display(datetime.now().strftime("%H:%M:%S"))
+        loop_lcd.display("00:00:00")
 
     def _load_folder_tickers(self, folder_path, log_files=False):
         txt_files = sorted(Path(folder_path).glob("*.txt"))
@@ -1340,9 +1568,50 @@ class MainWindow(QMainWindow):
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             if header in numeric_columns:
                 item.setData(Qt.ItemDataRole.EditRole, value)
+            self._style_result_item(item, header, value)
             self.E_Resultados.setItem(row_idx, col_idx, item)
         self.E_Resultados.setSortingEnabled(True)
         self.E_Resultados.sortItems(columns.index("Score"), Qt.SortOrder.DescendingOrder)
+
+    def _style_result_item(self, item, header, value):
+        text = str(value).upper()
+
+        if header == "Score":
+            try:
+                score = int(value)
+            except (TypeError, ValueError):
+                return
+            font = item.font()
+            font.setBold(True)
+            item.setFont(font)
+            if score >= 80:
+                item.setBackground(QBrush(QColor("#dff3e6")))
+                item.setForeground(QBrush(QColor("#17633a")))
+            else:
+                item.setBackground(QBrush(QColor("#fff1d6")))
+                item.setForeground(QBrush(QColor("#7a4b00")))
+            return
+
+        if header == "Signal":
+            font = item.font()
+            font.setBold(True)
+            item.setFont(font)
+            if "COMPRA" in text:
+                item.setBackground(QBrush(QColor("#e1f4eb")))
+                item.setForeground(QBrush(QColor("#15613a")))
+            elif "VENTA" in text:
+                item.setBackground(QBrush(QColor("#f8e1e1")))
+                item.setForeground(QBrush(QColor("#8a2f2f")))
+            else:
+                item.setBackground(QBrush(QColor("#eef3f7")))
+                item.setForeground(QBrush(QColor("#4a5b66")))
+            return
+
+        if header in {"Flow", "Smart Money"}:
+            if any(word in text for word in ("COMPRANDO", "ACUMULANDO")):
+                item.setForeground(QBrush(QColor("#17633a")))
+            elif any(word in text for word in ("VENDIENDO", "DISTRIBUYENDO")):
+                item.setForeground(QBrush(QColor("#8a2f2f")))
 
     def on_analysis_finished(self, results):
         self.append_to_visor("Análisis finalizado.")
@@ -1432,7 +1701,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Loop fuera de horario",
-                "El loop solo puede activarse entre las 10:00 y las 21:00.",
+                f"El loop solo puede activarse entre las "
+                f"{time_to_text(LOOP_ACTIVE_START)} y las {time_to_text(LOOP_ACTIVE_END)}.",
             )
             self.C_Tiempo.setChecked(False)
             return
