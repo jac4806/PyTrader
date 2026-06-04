@@ -119,7 +119,7 @@ SMTP_HOST = os.getenv("PYTRADER_SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("PYTRADER_SMTP_PORT", "587"))
 SMTP_USER = os.getenv("PYTRADER_SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("PYTRADER_SMTP_PASSWORD", "")
-SMTP_FROM = os.getenv("PYTRADER_SMTP_FROM", SMTP_USER)
+SMTP_FROM = os.getenv("PYTRADER_SMTP_FROM", "") or SMTP_USER
 SMTP_USE_TLS = os.getenv("PYTRADER_SMTP_TLS", "1") != "0"
 EUROPE_MARKET_START = dt_time(9, 30)
 EUROPE_MARKET_END = dt_time(17, 0)
@@ -382,7 +382,7 @@ def calculate_indicators(dataframe):
 
 def build_high_score_email_body(results):
     lines = [
-        "Resultados del analisis Smart Money con Score superior a "
+        "Resultados del analisis Smart Money con Score igual o superior a "
         f"{EMAIL_MIN_SCORE}:",
         "",
     ]
@@ -409,7 +409,10 @@ def build_high_score_email_body(results):
 
 def send_high_score_email(results):
     if not results:
-        return False, f"No hay resultados con Score superior a {EMAIL_MIN_SCORE} para enviar."
+        return (
+            False,
+            f"No hay resultados con Score igual o superior a {EMAIL_MIN_SCORE} para enviar.",
+        )
 
     missing = []
     if not SMTP_HOST:
@@ -418,22 +421,20 @@ def send_high_score_email(results):
         missing.append("PYTRADER_SMTP_USER")
     if not SMTP_PASSWORD:
         missing.append("PYTRADER_SMTP_PASSWORD")
-    if not SMTP_FROM:
-        missing.append("PYTRADER_SMTP_FROM")
 
     if missing:
         return (
             False,
             "Correo no enviado: faltan variables SMTP "
             + ", ".join(missing)
-            + ".",
+            + ". Crea un archivo .env desde .env.example o define esas variables en el sistema.",
         )
 
     message = EmailMessage()
     message["From"] = SMTP_FROM
     message["To"] = EMAIL_RESULTS_TO
     message["Subject"] = (
-        f"PyTrader: {len(results)} resultados con Score > {EMAIL_MIN_SCORE}"
+        f"PyTrader: {len(results)} resultados con Score >= {EMAIL_MIN_SCORE}"
     )
     message.set_content(build_high_score_email_body(results))
 
@@ -1664,7 +1665,7 @@ class MainWindow(QMainWindow):
                 self.append_to_visor(f"Error exportando Excel: {exc}")
 
         high_score_results = [
-            row for row in sorted_results if int(row.get("Score", 0)) > EMAIL_MIN_SCORE
+            row for row in sorted_results if int(row.get("Score", 0)) >= EMAIL_MIN_SCORE
         ]
         try:
             email_sent, email_message = send_high_score_email(high_score_results)
