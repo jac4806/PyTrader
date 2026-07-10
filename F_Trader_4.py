@@ -1699,10 +1699,97 @@ class MainWindow(QMainWindow):
         if EXPORT_EXCEL:
             df = pd.DataFrame(self.cumulative_results)
             try:
-                df.to_excel(EXCEL_NAME, index=False)
-                self.append_to_visor(f"Excel exportado: {EXCEL_NAME}")
+                # Construir archivo .txt en formato compatible con TradingView
+                tv_file = Path(EXCEL_NAME).with_suffix(".txt")
+
+                # Mapa inverso: sufijo -> mercado (códigos usados para TradingView)
+                suffix_to_exchange = {
+                    ".MC": "BME",
+                    ".PA": "EPA",
+                    ".L": "LON",
+                    ".DE": "XETR",
+                    ".F": "FRA",
+                    ".AS": "AMS",
+                    ".MI": "MIL",
+                    ".HE": "HEL",
+                    ".ST": "STO",
+                    ".SW": "SWX",
+                    ".OL": "OSL",
+                    ".CO": "CPH",
+                    ".BR": "BRU",
+                    ".LS": "LIS",
+                    ".VI": "VIE",
+                    ".AX": "ASX",
+                }
+
+                # Mapear mercado -> continente (nombres en español)
+                europe = {
+                    "BME",
+                    "EPA",
+                    "LON",
+                    "XETR",
+                    "FRA",
+                    "AMS",
+                    "MIL",
+                    "HEL",
+                    "STO",
+                    "SWX",
+                    "OSL",
+                    "CPH",
+                    "BRU",
+                    "LIS",
+                    "VIE",
+                }
+                america = {"NASDAQ", "NYSE", "AMEX", "ARCA", "CBOE"}
+
+                groups = {}
+
+                def to_tv_notation(ticker):
+                    # Si ya viene con Exchange:Ticker, mantener tal cual
+                    if ":" in ticker:
+                        exch, sym = ticker.split(":", 1)
+                        return f"{exch}:{sym}"
+                    # Si viene con sufijo tipo TICKER.SUF, mapear sufijo
+                    if "." in ticker:
+                        base, suf = ticker.split(".", 1)
+                        suf = "." + suf
+                        exch = suffix_to_exchange.get(suf)
+                        if exch:
+                            return f"{exch}:{base}"
+                        return ticker
+                    # Por defecto asumimos NASDAQ para símbolos sin sufijo
+                    return f"NASDAQ:{ticker}"
+
+                def continent_for_exchange(exch_code):
+                    if exch_code in europe:
+                        return "Europa"
+                    if exch_code in america:
+                        return "America"
+                    # Fall back genérico
+                    return "Global"
+
+                for row in self.cumulative_results:
+                    tk = str(row.get("Ticker", "")).strip()
+                    if not tk:
+                        continue
+                    tv = to_tv_notation(tk)
+                    # extraer exchange para asignar continente
+                    if ":" in tv:
+                        exch = tv.split(":", 1)[0]
+                    else:
+                        exch = ""
+                    continent = continent_for_exchange(exch)
+                    groups.setdefault(continent, []).append(tv)
+
+                # Escribir un bloque por continente: ###Continente,ticker1,ticker2,...
+                with open(tv_file, "w", encoding="utf-8") as f:
+                    for continent, items in groups.items():
+                        line = "###" + continent + "," + ",".join(items)
+                        f.write(line + "\n")
+
+                self.append_to_visor(f"Lista TradingView exportada: {tv_file}")
             except Exception as exc:
-                self.append_to_visor(f"Error exportando Excel: {exc}")
+                self.append_to_visor(f"Error exportando lista .txt: {exc}")
 
         high_score_results = [
             row for row in sorted_results if int(row.get("Score", 0)) >= EMAIL_MIN_SCORE

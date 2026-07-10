@@ -1,0 +1,2 @@
+###America,NASDAQ:AAPL
+###Europa,BME:SAN,LON:RBS,BME:BBVA,SWX:UBS
