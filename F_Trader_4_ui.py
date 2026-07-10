@@ -187,7 +187,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "Mi Trading V2.8"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "Mi Trading V3"))
         self.B_LimpiarResultados.setText(_translate("MainWindow", "Limpiar"))
         self.B_Cancelar.setText(_translate("MainWindow", "Cancelar"))
         self.B_Salir.setText(_translate("MainWindow", "Salir"))

@@ -1,6 +1,6 @@
 #*******************************************************************
 #
-#             16/06/2026
+#             10/07/2026
 #
 ##******************************************************************
 import sys
@@ -9,8 +9,6 @@ import os
 import smtplib
 from datetime import datetime, time as dt_time
 from email.message import EmailMessage
-from urllib.parse import quote_plus
-
 from PyQt6 import uic
 from PyQt6.QtCore import (  # pylint: disable=no-name-in-module
     Qt,
@@ -240,6 +238,47 @@ def load_tickers(filename):
         tickers.append(item)
 
     return [ticker for ticker in tickers if ticker]
+
+
+TV_SUFFIX_EXCHANGE_MAP = {
+    ".MC": "BME",
+    ".PA": "EURONEXT",
+    ".L": "LSE",
+    ".DE": "XETR",
+    ".F": "FWB",
+    ".MI": "MIL",
+    ".AS": "EURONEXT",
+    ".HE": "EURONEXT",
+    ".ST": "OMXSTO",
+    ".SW": "SIX",
+    ".OL": "OSE",
+    ".CO": "OMXCOP",
+    ".BR": "EURONEXT",
+    ".LS": "EURONEXT",
+    ".VI": "VIE",
+}
+
+
+def build_tradingview_symbol(ticker):
+    """
+    Convierte un ticker (posiblemente con sufijo estilo Yahoo Finance, p.ej. 'SAN.MC')
+    en un simbolo compatible con TradingView del tipo 'MERCADO:TICKER'.
+    Si el ticker ya incluye el mercado (contiene ':'), se devuelve tal cual.
+    """
+    ticker = ticker.strip().upper()
+    if not ticker:
+        return ""
+
+    if ":" in ticker:
+        return ticker
+
+    for suffix, exchange in TV_SUFFIX_EXCHANGE_MAP.items():
+        if ticker.endswith(suffix):
+            symbol = ticker[: -len(suffix)]
+            return f"{exchange}:{symbol}"
+
+    # Sin sufijo de mercado -> se asume mercado estadounidense (NASDAQ por defecto)
+    return f"NASDAQ:{ticker}"
 
 
 def normalize_ticker(ticker):
@@ -1540,9 +1579,10 @@ class MainWindow(QMainWindow):
         if not ticker:
             return
 
-        url = QUrl(f"https://www.google.com/finance/beta/?hl=es&q={quote_plus(ticker)}")
+        tv_symbol = build_tradingview_symbol(ticker)
+        url = QUrl(f"https://www.tradingview.com/chart/?symbol={tv_symbol}")
         if not QDesktopServices.openUrl(url):
-            self.append_to_visor(f"No se pudo abrir Google Finance para {ticker}.")
+            self.append_to_visor(f"No se pudo abrir TradingView para {ticker}.")
 
     def on_analysis_result(self, result):
         self.cumulative_results.append(result)
