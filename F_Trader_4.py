@@ -26,6 +26,7 @@ from PyQt6.QtGui import (  # pylint: disable=no-name-in-module
     QBrush,
     QColor,
     QDesktopServices,
+    QIcon,
     QTextCursor,
 )
 from PyQt6.QtWidgets import (  # pylint: disable=no-name-in-module
@@ -694,6 +695,15 @@ class AnalysisThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        icon_path = resource_path("lupa-diagrama-negocios.png")
+        if icon_path.exists():
+            icon = QIcon(str(icon_path))
+            self.setWindowIcon(icon)
+            app = QApplication.instance()
+            if app is not None:
+                app.setWindowIcon(icon)
+
         uic.loadUi(UI_FILE, self)
         self.apply_visual_style()
         self.settings = QSettings("PyTrader", "PyTrader")

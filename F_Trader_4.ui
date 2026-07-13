@@ -11,11 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-<<<<<<< HEAD
    <string>Mi Trading V3</string>
-=======
-   <string>Mi Trading V2.9</string>
->>>>>>> 12ed8cb31616cb08314331acb765ad61150d7890
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QProgressBar" name="P_MercadoEuropeo">

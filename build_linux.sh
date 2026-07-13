@@ -39,6 +39,7 @@ Name=PyTrader
 Comment=Smart Money stock screener
 Exec=$LAUNCHER
 Path=$APP_DIR
+Icon=$APP_DIR/lupa-diagrama-negocios.png
 Terminal=false
 Categories=Office;Finance;
 StartupNotify=true
