@@ -1,6 +1,6 @@
 #*******************************************************************
 #
-#               02/06/2026
+#             15/07/2026
 #
 ##******************************************************************
 import sys
@@ -9,8 +9,6 @@ import os
 import smtplib
 from datetime import datetime, time as dt_time
 from email.message import EmailMessage
-from urllib.parse import quote_plus
-
 from PyQt6 import uic
 from PyQt6.QtCore import (  # pylint: disable=no-name-in-module
     Qt,
@@ -28,6 +26,7 @@ from PyQt6.QtGui import (  # pylint: disable=no-name-in-module
     QBrush,
     QColor,
     QDesktopServices,
+    QIcon,
     QTextCursor,
 )
 from PyQt6.QtWidgets import (  # pylint: disable=no-name-in-module
@@ -64,6 +63,21 @@ from pathlib import Path
 
 PERIOD = "1y"
 INTERVAL = "1d"
+
+RSI_PERIOD = 14
+RSI_OVERBOUGHT = 70
+RSI_OVERSOLD = 30
+RSI_WEIGHT = 5
+MACD_FAST = 12
+MACD_SLOW = 26
+MACD_SIGNAL = 9
+MACD_WEIGHT = 5
+PER_MAX = 25
+PER_WEIGHT = 5
+ADX_PERIOD = 14
+ADX_THRESHOLD = 20
+ADX_WEIGHT = 5
+VWAP_WEIGHT = 5
 
 EXPORT_EXCEL = True
 EXCEL_NAME = "SmartMoney_Screener.xlsx"
@@ -110,6 +124,11 @@ DEFAULT_RESULT_HEADERS = [
     "CFI Semanal",
     "Flow",
     "Smart Money",
+    "RSI",
+    "MACD",
+    "PER",
+    "ADX",
+    "VWAP",
     "Vol Relativo",
     "Fecha",
 ]
@@ -137,6 +156,20 @@ DEFAULT_APP_OPTIONS = {
     "min_score_to_display": MIN_SCORE_TO_DISPLAY,
     "email_min_score": EMAIL_MIN_SCORE,
     "email_results_to": EMAIL_RESULTS_TO,
+    "indicator_rsi_period": RSI_PERIOD,
+    "indicator_rsi_overbought": RSI_OVERBOUGHT,
+    "indicator_rsi_oversold": RSI_OVERSOLD,
+    "indicator_rsi_weight": RSI_WEIGHT,
+    "indicator_macd_fast": MACD_FAST,
+    "indicator_macd_slow": MACD_SLOW,
+    "indicator_macd_signal": MACD_SIGNAL,
+    "indicator_macd_weight": MACD_WEIGHT,
+    "indicator_per_max": PER_MAX,
+    "indicator_per_weight": PER_WEIGHT,
+    "indicator_adx_period": ADX_PERIOD,
+    "indicator_adx_threshold": ADX_THRESHOLD,
+    "indicator_adx_weight": ADX_WEIGHT,
+    "indicator_vwap_weight": VWAP_WEIGHT,
     "europe_market_start": EUROPE_MARKET_START,
     "europe_market_end": EUROPE_MARKET_END,
     "us_market_start": US_MARKET_START,
@@ -242,6 +275,47 @@ def load_tickers(filename):
     return [ticker for ticker in tickers if ticker]
 
 
+TV_SUFFIX_EXCHANGE_MAP = {
+    ".MC": "BME",
+    ".PA": "EURONEXT",
+    ".L": "LSE",
+    ".DE": "XETR",
+    ".F": "FWB",
+    ".MI": "MIL",
+    ".AS": "EURONEXT",
+    ".HE": "EURONEXT",
+    ".ST": "OMXSTO",
+    ".SW": "SIX",
+    ".OL": "OSE",
+    ".CO": "OMXCOP",
+    ".BR": "EURONEXT",
+    ".LS": "EURONEXT",
+    ".VI": "VIE",
+}
+
+
+def build_tradingview_symbol(ticker):
+    """
+    Convierte un ticker (posiblemente con sufijo estilo Yahoo Finance, p.ej. 'SAN.MC')
+    en un simbolo compatible con TradingView del tipo 'MERCADO:TICKER'.
+    Si el ticker ya incluye el mercado (contiene ':'), se devuelve tal cual.
+    """
+    ticker = ticker.strip().upper()
+    if not ticker:
+        return ""
+
+    if ":" in ticker:
+        return ticker
+
+    for suffix, exchange in TV_SUFFIX_EXCHANGE_MAP.items():
+        if ticker.endswith(suffix):
+            symbol = ticker[: -len(suffix)]
+            return f"{exchange}:{symbol}"
+
+    # Sin sufijo de mercado -> se asume mercado estadounidense (NASDAQ por defecto)
+    return f"NASDAQ:{ticker}"
+
+
 def normalize_ticker(ticker):
     ticker = ticker.upper().strip()
     if not ticker:
@@ -287,11 +361,65 @@ def normalize_ticker(ticker):
     return ticker.replace(" ", "").replace("/", "-")
 
 
-def calculate_indicators(dataframe):
+def get_pe_ratio(ticker):
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        fast_info = getattr(ticker_obj, "fast_info", None)
+        if fast_info is not None:
+            for key in ("forwardPE", "trailingPE"):
+                value = getattr(fast_info, key, None)
+                if value not in (None, 0):
+                    return float(value)
+
+        info = getattr(ticker_obj, "info", None) or {}
+        if isinstance(info, dict):
+            for key in ("forwardPE", "trailingPE", "pegRatio"):
+                value = info.get(key)
+                if value not in (None, 0):
+                    return float(value)
+    except Exception:
+        return None
+    return None
+
+
+def calculate_indicators(dataframe, pe_ratio=None, params=None):
     """
-    Calcula indicadores Smart Money, CFI, Flow, Tendencia y señales.
+    Calcula indicadores Smart Money, CFI, Flow, Tendencia, RSI, MACD, PER y señales.
     """
     data = dataframe.copy()
+    indicator_params = {
+        "rsi_period": 14,
+        "rsi_overbought": 70,
+        "rsi_oversold": 30,
+        "score_weight_rsi": 5,
+        "macd_fast": 12,
+        "macd_slow": 26,
+        "macd_signal": 9,
+        "score_weight_macd": 5,
+        "per_max": 25,
+        "score_weight_per": 5,
+        "adx_period": 14,
+        "adx_threshold": 20,
+        "score_weight_adx": 5,
+        "score_weight_vwap": 5,
+    }
+    if params:
+        indicator_params.update(params)
+
+    rsi_period = int(indicator_params.get("rsi_period", 14))
+    rsi_overbought = float(indicator_params.get("rsi_overbought", 70))
+    rsi_oversold = float(indicator_params.get("rsi_oversold", 30))
+    score_weight_rsi = float(indicator_params.get("score_weight_rsi", 5))
+    macd_fast = int(indicator_params.get("macd_fast", 12))
+    macd_slow = int(indicator_params.get("macd_slow", 26))
+    macd_signal = int(indicator_params.get("macd_signal", 9))
+    score_weight_macd = float(indicator_params.get("score_weight_macd", 5))
+    per_max = float(indicator_params.get("per_max", 25))
+    score_weight_per = float(indicator_params.get("score_weight_per", 5))
+    adx_period = int(indicator_params.get("adx_period", 14))
+    adx_threshold = float(indicator_params.get("adx_threshold", 20))
+    score_weight_adx = float(indicator_params.get("score_weight_adx", 5))
+    score_weight_vwap = float(indicator_params.get("score_weight_vwap", 5))
 
     cfi_raw = data["Volume"] * (data["Close"] - data["Open"])
     data["cfi"] = cfi_raw.ewm(span=20, adjust=False).mean()
@@ -320,6 +448,44 @@ def calculate_indicators(dataframe):
     data["strength"] = 2 * data["close_pos"] - 1
     data["flow"] = np.where(data["vol_strong"], data["strength"] * data["Volume"], 0)
     data["flow_smooth"] = data["flow"].ewm(span=5, adjust=False).mean()
+
+    delta = data["Close"].diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(window=rsi_period, min_periods=rsi_period).mean()
+    avg_loss = loss.rolling(window=rsi_period, min_periods=rsi_period).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    data["rsi"] = 100 - (100 / (1 + rs))
+    data["rsi"] = data["rsi"].fillna(50)
+    data["rsi_bullish"] = (data["rsi"] > 50) & (data["rsi"] > data["rsi"].shift(1))
+    data["rsi_oversold"] = data["rsi"] <= rsi_oversold
+    data["rsi_overbought"] = data["rsi"] >= rsi_overbought
+
+    ema_fast = data["Close"].ewm(span=macd_fast, adjust=False).mean()
+    ema_slow = data["Close"].ewm(span=macd_slow, adjust=False).mean()
+    data["macd"] = ema_fast - ema_slow
+    data["macd_signal"] = data["macd"].ewm(span=macd_signal, adjust=False).mean()
+    data["macd_bullish"] = (data["macd"] > data["macd_signal"]) & (data["macd"] > data["macd"].shift(1))
+
+    typical_price = (data["High"] + data["Low"] + data["Close"]) / 3
+    data["vwap"] = (typical_price * data["Volume"]).cumsum() / data["Volume"].cumsum().replace(0, np.nan)
+    data["vwap_bullish"] = data["Close"] > data["vwap"]
+
+    high_low = data["High"] - data["Low"]
+    up_move = data["High"] - data["High"].shift(1)
+    down_move = data["Low"].shift(1) - data["Low"]
+    plus_di = 100 * (up_move.where((up_move > down_move) & (up_move > 0), 0).rolling(adx_period).sum() / high_low.rolling(adx_period).sum().replace(0, np.nan))
+    minus_di = 100 * (down_move.where((down_move > up_move) & (down_move > 0), 0).rolling(adx_period).sum() / high_low.rolling(adx_period).sum().replace(0, np.nan))
+    dx = 100 * (np.abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, np.nan))
+    data["adx"] = dx.ewm(span=adx_period, adjust=False).mean()
+    data["adx_strong"] = data["adx"] >= adx_threshold
+
+    if pe_ratio not in (None, np.nan):
+        data["per"] = float(pe_ratio)
+        data["per_support"] = (float(pe_ratio) > 0) & (float(pe_ratio) <= per_max)
+    else:
+        data["per"] = np.nan
+        data["per_support"] = False
 
     data["accumulation"] = (
         data["vol_strong"] &
@@ -361,7 +527,9 @@ def calculate_indicators(dataframe):
     bool_cols = [
         "cfi_up", "cfi_w_up", "vol_strong", "accumulation",
         "distribution", "trend_up", "bull_div", "bear_div",
-        "buy_pro", "buy_early", "sell",
+        "buy_pro", "buy_early", "sell", "rsi_bullish",
+        "rsi_oversold", "rsi_overbought", "macd_bullish",
+        "per_support", "vwap_bullish", "adx_strong",
     ]
     data[bool_cols] = data[bool_cols].fillna(False)
 
@@ -370,10 +538,20 @@ def calculate_indicators(dataframe):
         (data["cfi_up"].astype(int) * 25) +
         (data["cfi_w_up"].astype(int) * 20) +
         (data["accumulation"].astype(int) * 15) +
-        ((data["flow_smooth"] > 0).astype(int) * 15)
+        ((data["flow_smooth"] > 0).astype(int) * 15) +
+        (data["rsi_bullish"].astype(int) * score_weight_rsi) +
+        (data["macd_bullish"].astype(int) * score_weight_macd) +
+        (data["per_support"].astype(int) * score_weight_per) +
+        (data["adx_strong"].astype(int) * score_weight_adx) +
+        (data["vwap_bullish"].astype(int) * score_weight_vwap)
     )
+    data["score"] = np.clip(data["score"], 0, 100)
 
-    conditions = [data["buy_pro"], data["buy_early"], data["sell"]]
+    conditions = [
+        data["buy_pro"] | ((data["rsi_bullish"] & data["macd_bullish"]) & data["trend_up"]),
+        data["buy_early"],
+        data["sell"],
+    ]
     choices = ["COMPRA FUERTE", "COMPRA TEMPRANA", "VENTA"]
     data["signal"] = np.select(conditions, choices, default="ESPERA")
 
@@ -498,6 +676,40 @@ class OptionsDialog(QDialog):
         self.min_score_email = QSpinBox()
         self.min_score_email.setRange(0, 100)
 
+        self.rsi_period = QSpinBox()
+        self.rsi_period.setRange(2, 100)
+        self.rsi_overbought = QSpinBox()
+        self.rsi_overbought.setRange(50, 90)
+        self.rsi_oversold = QSpinBox()
+        self.rsi_oversold.setRange(10, 50)
+        self.rsi_weight = QSpinBox()
+        self.rsi_weight.setRange(0, 30)
+
+        self.macd_fast = QSpinBox()
+        self.macd_fast.setRange(2, 100)
+        self.macd_slow = QSpinBox()
+        self.macd_slow.setRange(2, 100)
+        self.macd_signal = QSpinBox()
+        self.macd_signal.setRange(1, 50)
+        self.macd_weight = QSpinBox()
+        self.macd_weight.setRange(0, 30)
+
+        self.per_max = QDoubleSpinBox()
+        self.per_max.setRange(0.1, 1000)
+        self.per_max.setDecimals(2)
+        self.per_weight = QSpinBox()
+        self.per_weight.setRange(0, 30)
+
+        self.adx_period = QSpinBox()
+        self.adx_period.setRange(2, 100)
+        self.adx_threshold = QSpinBox()
+        self.adx_threshold.setRange(0, 100)
+        self.adx_weight = QSpinBox()
+        self.adx_weight.setRange(0, 30)
+
+        self.vwap_weight = QSpinBox()
+        self.vwap_weight.setRange(0, 30)
+
         self.email_to = QLineEdit()
 
         self.loop_start = QTimeEdit()
@@ -513,6 +725,20 @@ class OptionsDialog(QDialog):
         form.addRow("Nombre Excel", self.excel_name)
         form.addRow("Score minimo en tabla", self.min_score_table)
         form.addRow("Score minimo para email", self.min_score_email)
+        form.addRow("RSI periodo", self.rsi_period)
+        form.addRow("RSI sobrecomprado", self.rsi_overbought)
+        form.addRow("RSI sobrevendido", self.rsi_oversold)
+        form.addRow("Peso RSI en score", self.rsi_weight)
+        form.addRow("MACD rápido", self.macd_fast)
+        form.addRow("MACD lento", self.macd_slow)
+        form.addRow("MACD señal", self.macd_signal)
+        form.addRow("Peso MACD en score", self.macd_weight)
+        form.addRow("PER máximo", self.per_max)
+        form.addRow("Peso PER en score", self.per_weight)
+        form.addRow("ADX periodo", self.adx_period)
+        form.addRow("ADX umbral", self.adx_threshold)
+        form.addRow("Peso ADX en score", self.adx_weight)
+        form.addRow("Peso VWAP en score", self.vwap_weight)
         form.addRow("Email resultados", self.email_to)
         form.addRow("Loop activo inicio", self.loop_start)
         form.addRow("Loop activo fin", self.loop_end)
@@ -543,6 +769,20 @@ class OptionsDialog(QDialog):
         self.excel_name.textChanged.connect(self._emit_options_changed)
         self.min_score_table.valueChanged.connect(self._emit_options_changed)
         self.min_score_email.valueChanged.connect(self._emit_options_changed)
+        self.rsi_period.valueChanged.connect(self._emit_options_changed)
+        self.rsi_overbought.valueChanged.connect(self._emit_options_changed)
+        self.rsi_oversold.valueChanged.connect(self._emit_options_changed)
+        self.rsi_weight.valueChanged.connect(self._emit_options_changed)
+        self.macd_fast.valueChanged.connect(self._emit_options_changed)
+        self.macd_slow.valueChanged.connect(self._emit_options_changed)
+        self.macd_signal.valueChanged.connect(self._emit_options_changed)
+        self.macd_weight.valueChanged.connect(self._emit_options_changed)
+        self.per_max.valueChanged.connect(self._emit_options_changed)
+        self.per_weight.valueChanged.connect(self._emit_options_changed)
+        self.adx_period.valueChanged.connect(self._emit_options_changed)
+        self.adx_threshold.valueChanged.connect(self._emit_options_changed)
+        self.adx_weight.valueChanged.connect(self._emit_options_changed)
+        self.vwap_weight.valueChanged.connect(self._emit_options_changed)
         self.email_to.textChanged.connect(self._emit_options_changed)
         self.loop_start.timeChanged.connect(self._emit_options_changed)
         self.loop_end.timeChanged.connect(self._emit_options_changed)
@@ -562,6 +802,20 @@ class OptionsDialog(QDialog):
         self.excel_name.setText(str(options["excel_name"]))
         self.min_score_table.setValue(int(options["min_score_to_display"]))
         self.min_score_email.setValue(int(options["email_min_score"]))
+        self.rsi_period.setValue(int(options["indicator_rsi_period"]))
+        self.rsi_overbought.setValue(int(options["indicator_rsi_overbought"]))
+        self.rsi_oversold.setValue(int(options["indicator_rsi_oversold"]))
+        self.rsi_weight.setValue(int(options["indicator_rsi_weight"]))
+        self.macd_fast.setValue(int(options["indicator_macd_fast"]))
+        self.macd_slow.setValue(int(options["indicator_macd_slow"]))
+        self.macd_signal.setValue(int(options["indicator_macd_signal"]))
+        self.macd_weight.setValue(int(options["indicator_macd_weight"]))
+        self.per_max.setValue(float(options["indicator_per_max"]))
+        self.per_weight.setValue(int(options["indicator_per_weight"]))
+        self.adx_period.setValue(int(options["indicator_adx_period"]))
+        self.adx_threshold.setValue(int(options["indicator_adx_threshold"]))
+        self.adx_weight.setValue(int(options["indicator_adx_weight"]))
+        self.vwap_weight.setValue(int(options["indicator_vwap_weight"]))
         self.email_to.setText(str(options["email_results_to"]))
         self.loop_start.setTime(qt_time_from_python(options["loop_active_start"]))
         self.loop_end.setTime(qt_time_from_python(options["loop_active_end"]))
@@ -575,6 +829,20 @@ class OptionsDialog(QDialog):
             "excel_name": self.excel_name.text().strip() or DEFAULT_APP_OPTIONS["excel_name"],
             "min_score_to_display": self.min_score_table.value(),
             "email_min_score": self.min_score_email.value(),
+            "indicator_rsi_period": self.rsi_period.value(),
+            "indicator_rsi_overbought": self.rsi_overbought.value(),
+            "indicator_rsi_oversold": self.rsi_oversold.value(),
+            "indicator_rsi_weight": self.rsi_weight.value(),
+            "indicator_macd_fast": self.macd_fast.value(),
+            "indicator_macd_slow": self.macd_slow.value(),
+            "indicator_macd_signal": self.macd_signal.value(),
+            "indicator_macd_weight": self.macd_weight.value(),
+            "indicator_per_max": self.per_max.value(),
+            "indicator_per_weight": self.per_weight.value(),
+            "indicator_adx_period": self.adx_period.value(),
+            "indicator_adx_threshold": self.adx_threshold.value(),
+            "indicator_adx_weight": self.adx_weight.value(),
+            "indicator_vwap_weight": self.vwap_weight.value(),
             "email_results_to": self.email_to.text().strip(),
             "europe_market_start": DEFAULT_APP_OPTIONS["europe_market_start"],
             "europe_market_end": DEFAULT_APP_OPTIONS["europe_market_end"],
@@ -620,7 +888,23 @@ class AnalysisThread(QThread):
                 continue
 
             try:
-                stock_data = calculate_indicators(stock_data)
+                pe_ratio = get_pe_ratio(ticker)
+                stock_data = calculate_indicators(
+                    stock_data,
+                    pe_ratio=pe_ratio,
+                    params={
+                        "rsi_period": RSI_PERIOD,
+                        "rsi_overbought": RSI_OVERBOUGHT,
+                        "rsi_oversold": RSI_OVERSOLD,
+                        "score_weight_rsi": RSI_WEIGHT,
+                        "macd_fast": MACD_FAST,
+                        "macd_slow": MACD_SLOW,
+                        "macd_signal": MACD_SIGNAL,
+                        "score_weight_macd": MACD_WEIGHT,
+                        "per_max": PER_MAX,
+                        "score_weight_per": PER_WEIGHT,
+                    },
+                )
                 last = stock_data.iloc[-1]
                 result = {
                     "Ticker": ticker,
@@ -636,6 +920,11 @@ class AnalysisThread(QThread):
                         else "DISTRIBUYENDO" if last["distribution"]
                         else "NEUTRO"
                     ),
+                    "RSI": round(float(last["rsi"]), 1),
+                    "MACD": round(float(last["macd"]), 2),
+                    "PER": round(float(last["per"]), 2) if pd.notna(last["per"]) else "N/A",
+                    "ADX": round(float(last["adx"]), 1),
+                    "VWAP": "ENCIMA" if last["vwap_bullish"] else "DEBAJO",
                     "Vol Relativo": (
                         round(float(last["Volume"]) / float(last["vol_ma"]), 2)
                         if float(last["vol_ma"]) > 0 else 0
@@ -655,6 +944,15 @@ class AnalysisThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        icon_path = resource_path("lupa-diagrama-negocios.png")
+        if icon_path.exists():
+            icon = QIcon(str(icon_path))
+            self.setWindowIcon(icon)
+            app = QApplication.instance()
+            if app is not None:
+                app.setWindowIcon(icon)
+
         uic.loadUi(UI_FILE, self)
         self.apply_visual_style()
         self.settings = QSettings("PyTrader", "PyTrader")
@@ -981,6 +1279,26 @@ class MainWindow(QMainWindow):
             "email_results_to",
             options["email_results_to"],
         )
+        for key in (
+            "indicator_rsi_period",
+            "indicator_rsi_overbought",
+            "indicator_rsi_oversold",
+            "indicator_rsi_weight",
+            "indicator_macd_fast",
+            "indicator_macd_slow",
+            "indicator_macd_signal",
+            "indicator_macd_weight",
+            "indicator_per_max",
+            "indicator_per_weight",
+            "indicator_adx_period",
+            "indicator_adx_threshold",
+            "indicator_adx_weight",
+            "indicator_vwap_weight",
+        ):
+            options[key] = self._coerce_option_value(
+                self.settings.value(key, options[key]),
+                options[key],
+            )
 
         for key in (
             "loop_active_start",
@@ -998,6 +1316,21 @@ class MainWindow(QMainWindow):
             return value
         return str(value).strip().lower() in {"1", "true", "yes", "si", "sí"}
 
+    def _coerce_option_value(self, value, default):
+        if isinstance(default, bool):
+            return self._settings_bool("", value)
+        if isinstance(default, int):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+        if isinstance(default, float):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return default
+        return value
+
     def save_app_options(self, options):
         for key, value in options.items():
             if isinstance(value, dt_time):
@@ -1009,6 +1342,10 @@ class MainWindow(QMainWindow):
     def apply_app_options(self, options, save=True):
         global PERIOD, INTERVAL, DELAY_BETWEEN_REQUESTS, EXPORT_EXCEL, EXCEL_NAME
         global MIN_SCORE_TO_DISPLAY, EMAIL_MIN_SCORE, EMAIL_RESULTS_TO
+        global RSI_PERIOD, RSI_OVERBOUGHT, RSI_OVERSOLD, RSI_WEIGHT
+        global MACD_FAST, MACD_SLOW, MACD_SIGNAL, MACD_WEIGHT
+        global PER_MAX, PER_WEIGHT
+        global ADX_PERIOD, ADX_THRESHOLD, ADX_WEIGHT, VWAP_WEIGHT
         global EUROPE_MARKET_START, EUROPE_MARKET_END, US_MARKET_START, US_MARKET_END
         global LOOP_ACTIVE_START, LOOP_ACTIVE_END
 
@@ -1020,6 +1357,20 @@ class MainWindow(QMainWindow):
         MIN_SCORE_TO_DISPLAY = int(options["min_score_to_display"])
         EMAIL_MIN_SCORE = int(options["email_min_score"])
         EMAIL_RESULTS_TO = str(options["email_results_to"])
+        RSI_PERIOD = int(options["indicator_rsi_period"])
+        RSI_OVERBOUGHT = int(options["indicator_rsi_overbought"])
+        RSI_OVERSOLD = int(options["indicator_rsi_oversold"])
+        RSI_WEIGHT = int(options["indicator_rsi_weight"])
+        MACD_FAST = int(options["indicator_macd_fast"])
+        MACD_SLOW = int(options["indicator_macd_slow"])
+        MACD_SIGNAL = int(options["indicator_macd_signal"])
+        MACD_WEIGHT = int(options["indicator_macd_weight"])
+        PER_MAX = float(options["indicator_per_max"])
+        PER_WEIGHT = int(options["indicator_per_weight"])
+        ADX_PERIOD = int(options["indicator_adx_period"])
+        ADX_THRESHOLD = int(options["indicator_adx_threshold"])
+        ADX_WEIGHT = int(options["indicator_adx_weight"])
+        VWAP_WEIGHT = int(options["indicator_vwap_weight"])
         EUROPE_MARKET_START = options["europe_market_start"]
         EUROPE_MARKET_END = options["europe_market_end"]
         US_MARKET_START = options["us_market_start"]
@@ -1074,6 +1425,11 @@ class MainWindow(QMainWindow):
                 "CFI Semanal": 100,
                 "Flow": 100,
                 "Smart Money": 100,
+                "RSI": 90,
+                "MACD": 90,
+                "PER": 90,
+                "ADX": 90,
+                "VWAP": 90,
                 "Vol Relativo":100,
                 "Fecha": 129,
             }
@@ -1540,9 +1896,10 @@ class MainWindow(QMainWindow):
         if not ticker:
             return
 
-        url = QUrl(f"https://www.google.com/finance/beta/?hl=es&q={quote_plus(ticker)}")
+        tv_symbol = build_tradingview_symbol(ticker)
+        url = QUrl(f"https://www.tradingview.com/chart/?symbol={tv_symbol}")
         if not QDesktopServices.openUrl(url):
-            self.append_to_visor(f"No se pudo abrir Google Finance para {ticker}.")
+            self.append_to_visor(f"No se pudo abrir TradingView para {ticker}.")
 
     def on_analysis_result(self, result):
         self.cumulative_results.append(result)
@@ -1559,7 +1916,7 @@ class MainWindow(QMainWindow):
         self.E_Resultados.setSortingEnabled(False)
         row_idx = self.E_Resultados.rowCount()
         self.E_Resultados.insertRow(row_idx)
-        numeric_columns = {"Precio", "Score", "Vol Relativo"}
+        numeric_columns = {"Precio", "Score", "RSI", "MACD", "PER", "Vol Relativo"}
         for col_idx, header in enumerate(columns):
             value = result.get(header, "")
             display_value = str(value)
