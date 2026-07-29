@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>PyTrader (Electron)</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 16px; }
+      textarea { width: 100%; height: 80px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      th, td { border: 1px solid #ddd; padding: 6px; text-align: center; }
+      th { background: #20313f; color: white; }
+      #status { margin-top: 8px; color: #333; }
+    </style>
+  </head>
+  <body>
+    <h2>PyTrader — Electron</h2>
+    <div style="display:flex;gap:12px;align-items:flex-start;">
+      <div style="flex:1">
+        <label>Tickers (separados por comas):</label>
+        <textarea id="tickers">AAPL, MSFT</textarea>
+        <div style="margin-top:8px">
+          <button id="btnAnalyze">Analizar</button>
+        </div>
+        <div id="status"></div>
+      </div>
+      <div style="width:320px;">
+        <h4>Filtros</h4>
+        <label>Buscar:</label>
+        <input id="filterText" placeholder="Ticker o señal" style="width:100%" />
+        <label>Score mínimo:</label>
+        <input id="filterScore" type="number" min="0" max="100" value="60" style="width:100%" />
+        <h4 style="margin-top:12px">Email</h4>
+        <label>Para:</label>
+        <input id="emailTo" style="width:100%" placeholder="destino@ejemplo.com" />
+        <label>SMTP Host:</label>
+        <input id="smtpHost" style="width:100%" placeholder="smtp.example.com" />
+        <label>SMTP Usuario:</label>
+        <input id="smtpUser" style="width:100%" placeholder="user@example.com" />
+        <label>SMTP Contraseña:</label>
+        <input id="smtpPass" type="password" style="width:100%" />
+        <div style="margin-top:8px;display:flex;gap:8px;"><button id="btnSendEmail">Enviar email</button><button id="btnAutoEmail">Enviar Auto</button></div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px">
+      <table id="results"><thead><tr><th data-col="Ticker">Ticker</th><th data-col="Signal">Signal</th><th data-col="Score">Score</th><th data-col="Precio">Precio</th><th data-col="RSI">RSI</th><th data-col="MACD">MACD</th></tr></thead><tbody></tbody></table>
+    </div>
+    <script src="renderer.js"></script>
+  </body>
+</html>
