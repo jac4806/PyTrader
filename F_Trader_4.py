@@ -1,8 +1,8 @@
 #*******************************************************************
 #
-#             15/07/2026
-#             10/07/2026
-#            15/07/2026
+#            31/07/2026
+#            PyTrader V4
+#
 #***********************************************************
 import sys
 import time
@@ -57,6 +57,14 @@ import yfinance as yf
 import io
 import contextlib
 from pathlib import Path
+from urllib.parse import quote
+
+try:
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+    HAS_WEBENGINE = True
+except ImportError:
+    QWebEngineView = None
+    HAS_WEBENGINE = False
 
 # =========================================================
 # CONFIGURACIÓN
@@ -534,19 +542,48 @@ def calculate_indicators(dataframe, pe_ratio=None, params=None):
     ]
     data[bool_cols] = data[bool_cols].fillna(False)
 
-    data["score"] = (
-        (data["trend_up"].astype(int) * 25) +
-        (data["cfi_up"].astype(int) * 25) +
-        (data["cfi_w_up"].astype(int) * 20) +
-        (data["accumulation"].astype(int) * 15) +
-        ((data["flow_smooth"] > 0).astype(int) * 15) +
+    # --- Pesos "estructurales" (tendencia y dinero inteligente) ---
+    weight_trend = 25.0
+    weight_cfi_daily = 25.0
+    weight_cfi_weekly = 20.0
+    weight_accumulation = 15.0
+    weight_flow = 15.0
+
+    # El PER solo cuenta si hay dato real disponible para ese ticker.
+    # Si no hay PE ratio, se excluye del denominador para no penalizar
+    # injustamente a empresas sin ese dato (ETFs, algunos mercados, etc.)
+    per_available = pe_ratio not in (None, np.nan) and not (
+        isinstance(pe_ratio, float) and np.isnan(pe_ratio)
+    )
+
+    total_weight = (
+        weight_trend + weight_cfi_daily + weight_cfi_weekly +
+        weight_accumulation + weight_flow +
+        score_weight_rsi + score_weight_macd +
+        score_weight_adx + score_weight_vwap +
+        (score_weight_per if per_available else 0.0)
+    )
+    if total_weight <= 0:
+        total_weight = 1.0
+
+    raw_score = (
+        (data["trend_up"].astype(int) * weight_trend) +
+        (data["cfi_up"].astype(int) * weight_cfi_daily) +
+        (data["cfi_w_up"].astype(int) * weight_cfi_weekly) +
+        (data["accumulation"].astype(int) * weight_accumulation) +
+        ((data["flow_smooth"] > 0).astype(int) * weight_flow) +
         (data["rsi_bullish"].astype(int) * score_weight_rsi) +
         (data["macd_bullish"].astype(int) * score_weight_macd) +
-        (data["per_support"].astype(int) * score_weight_per) +
         (data["adx_strong"].astype(int) * score_weight_adx) +
         (data["vwap_bullish"].astype(int) * score_weight_vwap)
     )
-    data["score"] = np.clip(data["score"], 0, 100)
+    if per_available:
+        raw_score = raw_score + (data["per_support"].astype(int) * score_weight_per)
+
+    # Score = % real de los criterios (disponibles) que se cumplen.
+    # 100 significa que se cumplen TODOS los parámetros configurados;
+    # ya no se satura al cumplir solo 3-4 condiciones "pesadas".
+    data["score"] = np.clip((raw_score / total_weight) * 100.0, 0, 100)
 
     conditions = [
         data["buy_pro"] | ((data["rsi_bullish"] & data["macd_bullish"]) & data["trend_up"]),
@@ -854,6 +891,52 @@ class OptionsDialog(QDialog):
         }
 
 
+class ChartDialog(QDialog):
+    """
+    Ventana con el gráfico de cotización de un ticker.
+    Usa un iframe directo al endpoint 'widgetembed' de TradingView en vez del
+    script de embed oficial, porque el script de embed no funciona bien al
+    cargarse desde file:// (que es como Qt sirve el HTML por defecto).
+    """
+
+    def __init__(self, ticker, tv_symbol, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Gráfico - {ticker}")
+        self.resize(900, 620)
+        if parent is not None:
+            self.setStyleSheet(parent.styleSheet())
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.web_view = QWebEngineView(self)
+
+        encoded_symbol = quote(tv_symbol, safe="")
+        chart_url = (
+            "https://s.tradingview.com/widgetembed/?symbol="
+            f"{encoded_symbol}"
+            "&interval=W&theme=light&style=1&locale=es&toolbarbg=F1F3F6"
+            "&hideideas=1&range=24M&hidetoptoolbar=0&hidesidetoolbar=1"
+            "&saveimage=0&studies=%5B%5D"
+        )
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>html, body {{ margin: 0; padding: 0; }}</style>
+</head>
+<body>
+<iframe src="{chart_url}" width="100%" height="560" frameborder="0"
+        allowtransparency="true" scrolling="no"></iframe>
+</body>
+</html>"""
+
+        # Servir el HTML con una base URL https:// (no file://) para que el
+        # iframe se cargue sin restricciones de contenido mixto/CORS.
+        self.web_view.setHtml(html, QUrl("https://s.tradingview.com/"))
+        layout.addWidget(self.web_view)
+
+
 class AnalysisThread(QThread):
     progress = pyqtSignal(str)
     result_ready = pyqtSignal(object)
@@ -904,6 +987,10 @@ class AnalysisThread(QThread):
                         "score_weight_macd": MACD_WEIGHT,
                         "per_max": PER_MAX,
                         "score_weight_per": PER_WEIGHT,
+                        "adx_period": ADX_PERIOD,
+                        "adx_threshold": ADX_THRESHOLD,
+                        "score_weight_adx": ADX_WEIGHT,
+                        "score_weight_vwap": VWAP_WEIGHT,
                     },
                 )
                 last = stock_data.iloc[-1]
@@ -911,7 +998,7 @@ class AnalysisThread(QThread):
                     "Ticker": ticker,
                     "Precio": round(float(last["Close"]), 2),
                     "Signal": str(last["signal"]),
-                    "Score": int(last["score"]),
+                    "Score": round(float(last["score"])),
                     "Trend": "SI" if last["trend_up"] else "NO",
                     "CFI Diario": "FUERTE" if last["cfi_up"] else "DEBIL",
                     "CFI Semanal": "FUERTE" if last["cfi_w_up"] else "DEBIL",
@@ -1898,9 +1985,22 @@ class MainWindow(QMainWindow):
             return
 
         tv_symbol = build_tradingview_symbol(ticker)
-        url = QUrl(f"https://www.tradingview.com/chart/?symbol={tv_symbol}")
-        if not QDesktopServices.openUrl(url):
-            self.append_to_visor(f"No se pudo abrir TradingView para {ticker}.")
+
+        if not HAS_WEBENGINE:
+            self.append_to_visor(
+                "Falta el paquete 'PyQt6-WebEngine' para mostrar el gráfico embebido "
+                "(instálalo con: pip install PyQt6-WebEngine). Abriendo en el navegador..."
+            )
+            url = QUrl(f"https://www.tradingview.com/chart/?symbol={tv_symbol}")
+            if not QDesktopServices.openUrl(url):
+                self.append_to_visor(f"No se pudo abrir TradingView para {ticker}.")
+            return
+
+        dialog = ChartDialog(ticker, tv_symbol, parent=self)
+        dialog.show()
+        # Mantener referencia para que la ventana no sea recolectada por el GC
+        self._open_chart_dialogs = getattr(self, "_open_chart_dialogs", [])
+        self._open_chart_dialogs.append(dialog)
 
     def on_analysis_result(self, result):
         self.cumulative_results.append(result)

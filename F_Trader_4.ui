@@ -6,12 +6,12 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1652</width>
+    <width>1805</width>
     <height>964</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Mi Trading V3</string>
+   <string>Mi Trading V4</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QProgressBar" name="P_MercadoEuropeo">
@@ -19,7 +19,7 @@
      <rect>
       <x>10</x>
       <y>30</y>
-      <width>901</width>
+      <width>1011</width>
       <height>25</height>
      </rect>
     </property>
@@ -38,9 +38,9 @@
    <widget class="QProgressBar" name="P_MercadoAmericano">
     <property name="geometry">
      <rect>
-      <x>560</x>
-      <y>60</y>
-      <width>861</width>
+      <x>580</x>
+      <y>70</y>
+      <width>1011</width>
       <height>25</height>
      </rect>
     </property>
@@ -258,7 +258,7 @@
      <rect>
       <x>580</x>
       <y>115</y>
-      <width>1051</width>
+      <width>1201</width>
       <height>725</height>
      </rect>
     </property>
@@ -275,7 +275,7 @@
       <rect>
        <x>10</x>
        <y>30</y>
-       <width>1021</width>
+       <width>1171</width>
        <height>675</height>
       </rect>
      </property>
@@ -396,7 +396,7 @@
    <widget class="QLCDNumber" name="lcd_Reloj">
     <property name="geometry">
      <rect>
-      <x>1500</x>
+      <x>1650</x>
       <y>10</y>
       <width>121</width>
       <height>51</height>
@@ -411,7 +411,7 @@
    <widget class="QLabel" name="label">
     <property name="geometry">
      <rect>
-      <x>970</x>
+      <x>1080</x>
       <y>30</y>
       <width>161</width>
       <height>18</height>
@@ -450,8 +450,8 @@
    <widget class="QLabel" name="label_4">
     <property name="geometry">
      <rect>
-      <x>720</x>
-      <y>0</y>
+      <x>950</x>
+      <y>10</y>
       <width>41</width>
       <height>25</height>
      </rect>
@@ -476,8 +476,8 @@
    <widget class="QLabel" name="label_6">
     <property name="geometry">
      <rect>
-      <x>1400</x>
-      <y>30</y>
+      <x>1560</x>
+      <y>40</y>
       <width>41</width>
       <height>16</height>
      </rect>
@@ -492,8 +492,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1652</width>
-     <height>21</height>
+     <width>1805</width>
+     <height>30</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuOpciones">
