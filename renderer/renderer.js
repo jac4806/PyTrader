@@ -5,6 +5,9 @@ const filterText = document.getElementById('filterText');
 const filterScore = document.getElementById('filterScore');
 const btnSendEmail = document.getElementById('btnSendEmail');
 const btnAutoEmail = document.getElementById('btnAutoEmail');
+const periodInput = document.getElementById('period');
+const intervalInput = document.getElementById('interval');
+const tickersInput = document.getElementById('tickers');
 
 let lastResults = [];
 let sortState = { col: 'Score', dir: -1 };
@@ -13,11 +16,20 @@ let sortState = { col: 'Score', dir: -1 };
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     const cfg = await window.pytrader.getConfig();
-    if (cfg && cfg.smtp) {
-      document.getElementById('smtpHost').value = cfg.smtp.host || '';
-      document.getElementById('smtpUser').value = cfg.smtp.user || '';
-      document.getElementById('smtpPass').value = cfg.smtp.pass || '';
-      document.getElementById('emailTo').value = cfg.smtp.to || '';
+    if (cfg) {
+      if (cfg.smtp) {
+        document.getElementById('smtpHost').value = cfg.smtp.host || '';
+        document.getElementById('smtpUser').value = cfg.smtp.user || '';
+        document.getElementById('smtpPass').value = cfg.smtp.pass || '';
+        document.getElementById('emailTo').value = cfg.smtp.to || '';
+      }
+      if (cfg.ui) {
+        tickersInput.value = cfg.ui.tickers || tickersInput.value;
+        periodInput.value = cfg.ui.period || periodInput.value;
+        intervalInput.value = cfg.ui.interval || intervalInput.value;
+        filterText.value = cfg.ui.filterText || filterText.value;
+        filterScore.value = cfg.ui.filterScore || filterScore.value;
+      }
     }
   } catch (e) {
     console.warn('No se pudo cargar configuración:', e);
@@ -67,17 +79,28 @@ function renderTable(results) {
 }
 
 btn.addEventListener('click', async () => {
-  const raw = document.getElementById('tickers').value || '';
+  const raw = tickersInput.value || '';
   const tickers = raw.split(/[,\n;]+/).map(s => s.trim()).filter(Boolean);
   if (tickers.length === 0) return alert('Introduce tickers');
   status.textContent = 'Analizando...';
   resultsTbody.innerHTML = '';
   try {
-    const options = { period: '1y', interval: '1d', indicators: {} };
+    const options = {
+      period: periodInput.value.trim() || '1y',
+      interval: intervalInput.value.trim() || '1d',
+      indicators: {}
+    };
     const res = await window.pytrader.analyze(tickers, options);
     lastResults = res.map(r => ({ ticker: r.ticker, result: r.result, error: r.error }));
     renderTable(lastResults);
     status.textContent = 'Análisis finalizado.';
+    await window.pytrader.setConfig('ui', {
+      tickers: tickersInput.value,
+      period: options.period,
+      interval: options.interval,
+      filterText: filterText.value,
+      filterScore: filterScore.value
+    });
   } catch (err) {
     status.textContent = 'Error: ' + String(err);
   }

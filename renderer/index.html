@@ -18,6 +18,16 @@
       <div style="flex:1">
         <label>Tickers (separados por comas):</label>
         <textarea id="tickers">AAPL, MSFT</textarea>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+          <div style="flex:1 1 150px;">
+            <label>Periodo:</label>
+            <input id="period" type="text" value="1y" style="width:100%" />
+          </div>
+          <div style="flex:1 1 150px;">
+            <label>Intervalo:</label>
+            <input id="interval" type="text" value="1d" style="width:100%" />
+          </div>
+        </div>
         <div style="margin-top:8px">
           <button id="btnAnalyze">Analizar</button>
         </div>
