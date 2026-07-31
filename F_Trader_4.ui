@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1805</width>
-    <height>964</height>
+    <width>1885</width>
+    <height>961</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -19,7 +19,7 @@
      <rect>
       <x>10</x>
       <y>30</y>
-      <width>1011</width>
+      <width>1281</width>
       <height>25</height>
      </rect>
     </property>
@@ -39,8 +39,8 @@
     <property name="geometry">
      <rect>
       <x>580</x>
-      <y>70</y>
-      <width>1011</width>
+      <y>80</y>
+      <width>1281</width>
       <height>25</height>
      </rect>
     </property>
@@ -258,7 +258,7 @@
      <rect>
       <x>580</x>
       <y>115</y>
-      <width>1201</width>
+      <width>1291</width>
       <height>725</height>
      </rect>
     </property>
@@ -275,7 +275,7 @@
       <rect>
        <x>10</x>
        <y>30</y>
-       <width>1171</width>
+       <width>1271</width>
        <height>675</height>
       </rect>
      </property>
@@ -396,9 +396,9 @@
    <widget class="QLCDNumber" name="lcd_Reloj">
     <property name="geometry">
      <rect>
-      <x>1650</x>
-      <y>10</y>
-      <width>121</width>
+      <x>1700</x>
+      <y>0</y>
+      <width>161</width>
       <height>51</height>
      </rect>
     </property>
@@ -411,8 +411,8 @@
    <widget class="QLabel" name="label">
     <property name="geometry">
      <rect>
-      <x>1080</x>
-      <y>30</y>
+      <x>1130</x>
+      <y>60</y>
       <width>161</width>
       <height>18</height>
      </rect>
@@ -424,8 +424,8 @@
    <widget class="QLabel" name="label_2">
     <property name="geometry">
      <rect>
-      <x>220</x>
-      <y>5</y>
+      <x>470</x>
+      <y>10</y>
       <width>141</width>
       <height>25</height>
      </rect>
@@ -476,8 +476,8 @@
    <widget class="QLabel" name="label_6">
     <property name="geometry">
      <rect>
-      <x>1560</x>
-      <y>40</y>
+      <x>1820</x>
+      <y>60</y>
       <width>41</width>
       <height>16</height>
      </rect>
@@ -492,7 +492,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1805</width>
+     <width>1885</width>
      <height>30</height>
     </rect>
    </property>
