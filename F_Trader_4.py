@@ -88,15 +88,15 @@ ADX_THRESHOLD = 20
 ADX_WEIGHT = 5
 VWAP_WEIGHT = 5
 
-EXPORT_EXCEL = True
+EXPORT_EXCEL = False
 EXCEL_NAME = "SmartMoney_Screener.xlsx"
 APP_DIR = Path(__file__).resolve().parent
 
 # Conserva la notacion original MERCADO:TICKER para poder reconstruir
 # las listas de salida exactamente en el formato de TradingView.
 ORIGINAL_TICKER_MAP = {}
-A_PUNTO_FILE = "A_Punto.txt"
-A_PUNTO_MIN_SCORE = 60
+A_PUNTO_FILE = "Mi_Screener.txt"
+A_PUNTO_MIN_SCORE = 70
 
 
 def load_env_file(path):
