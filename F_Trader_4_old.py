@@ -92,12 +92,6 @@ EXPORT_EXCEL = True
 EXCEL_NAME = "SmartMoney_Screener.xlsx"
 APP_DIR = Path(__file__).resolve().parent
 
-# Conserva la notacion original MERCADO:TICKER para poder reconstruir
-# las listas de salida exactamente en el formato de TradingView.
-ORIGINAL_TICKER_MAP = {}
-A_PUNTO_FILE = "A_Punto.txt"
-A_PUNTO_MIN_SCORE = 60
-
 
 def load_env_file(path):
     if not path.exists():
@@ -281,18 +275,11 @@ def load_tickers(filename):
     tickers = []
 
     for item in content.replace(";", ",").replace("\n", ",").split(","):
-        original = item.strip().upper()
-        if not original:
+        item = item.strip()
+        if not item:
             continue
-
-        normalized = normalize_ticker(original)
-        if not normalized:
-            continue
-
-        # Guardamos la primera notacion original encontrada.
-        # Ej.: NYSE:HPE -> HPE, pero para A_Punto.txt conservamos NYSE:HPE.
-        ORIGINAL_TICKER_MAP.setdefault(normalized, original)
-        tickers.append(normalized)
+        item = normalize_ticker(item)
+        tickers.append(item)
 
     return [ticker for ticker in tickers if ticker]
 
@@ -1040,44 +1027,6 @@ class AnalysisThread(QThread):
             time.sleep(DELAY_BETWEEN_REQUESTS)
 
         self.finished.emit(results)
-
-
-def export_a_punto(results, filename=A_PUNTO_FILE, min_score=A_PUNTO_MIN_SCORE):
-    """
-    Crea A_Punto.txt con los valores cuyo Score sea estrictamente superior
-    a min_score, conservando el formato TradingView:
-        NASDAQ:GNTX,NYSE:HPE,LSE:IES,...
-    """
-    selected = [
-        row for row in results
-        if int(row.get("Score", 0)) > min_score
-    ]
-
-    symbols = []
-    seen = set()
-
-    for row in selected:
-        normalized = str(row.get("Ticker", "")).strip().upper()
-        if not normalized:
-            continue
-
-        # Preferir la notacion original de la lista.
-        tv_symbol = ORIGINAL_TICKER_MAP.get(normalized, "")
-        if not tv_symbol:
-            tv_symbol = build_tradingview_symbol(normalized)
-
-        tv_symbol = tv_symbol.strip().upper()
-        if tv_symbol and tv_symbol not in seen:
-            seen.add(tv_symbol)
-            symbols.append(tv_symbol)
-
-    output_path = Path(filename)
-    with open(output_path, "w", encoding="utf-8", newline="") as file:
-        file.write(",".join(symbols))
-        if symbols:
-            file.write("\n")
-
-    return output_path, len(symbols)
 
 
 class MainWindow(QMainWindow):
@@ -1935,10 +1884,8 @@ class MainWindow(QMainWindow):
             for p in parts:
                 if not p:
                     continue
-                original = p.strip().upper()
-                p = normalize_ticker(original)
+                p = normalize_ticker(p)
                 if p:
-                    ORIGINAL_TICKER_MAP.setdefault(p, original)
                     combined.append(p)
 
         # eliminar duplicados preservando orden
@@ -2261,20 +2208,6 @@ class MainWindow(QMainWindow):
                 self.append_to_visor(f"Lista TradingView exportada: {tv_file}")
             except Exception as exc:
                 self.append_to_visor(f"Error exportando lista .txt: {exc}")
-
-        # ---------------------------------------------------------
-        # A_Punto.txt
-        # Exporta SIEMPRE los valores con Score > 60 en formato
-        # MERCADO:TICKER, conservando la notacion original.
-        # ---------------------------------------------------------
-        try:
-            a_punto_path, a_punto_count = export_a_punto(sorted_results)
-            self.append_to_visor(
-                f"A_Punto.txt creado: {a_punto_count} valores con Score > "
-                f"{A_PUNTO_MIN_SCORE} -> {a_punto_path}"
-            )
-        except Exception as exc:
-            self.append_to_visor(f"Error creando A_Punto.txt: {exc}")
 
         high_score_results = [
             row for row in sorted_results if int(row.get("Score", 0)) >= EMAIL_MIN_SCORE
