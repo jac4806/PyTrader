@@ -2163,6 +2163,15 @@ class MainWindow(QMainWindow):
 
         if not results and not self.cumulative_results:
             self.append_to_visor("No se generaron resultados.")
+            if EXPORT_EXCEL:
+                empty_export_path = Path(EXCEL_NAME).with_suffix(".txt")
+                try:
+                    empty_export_path.write_text("", encoding="utf-8")
+                    self.append_to_visor(
+                        f"Lista TradingView exportada: {empty_export_path} (sin resultados)"
+                    )
+                except Exception as exc:
+                    self.append_to_visor(f"Error exportando lista .txt: {exc}")
             return
 
         if not self.cumulative_results:
