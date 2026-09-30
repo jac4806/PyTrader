@@ -1140,6 +1140,8 @@ class MainWindow(QMainWindow):
         self.B_Carpeta.clicked.connect(self.on_b_carpeta)
         self.B_Ticker.clicked.connect(self.on_b_analizar)
         self.B_Cancelar.clicked.connect(self.on_b_cancelar)
+        self.B_Reiniciar.clicked.connect(self.on_b_reiniciar)
+        self.B_Reiniciar.setEnabled(False)
         self.B_Borrar = getattr(self, "B_Borrar", None)
         if self.B_Borrar is None:
             self.B_Borrar = self.B_LimpiarResultados
@@ -1980,6 +1982,7 @@ class MainWindow(QMainWindow):
         show_current_results=False,
     ):
         self._stop_loop_timer()
+        self.current_tickers = list(tickers)
         self.analysis_clear_results = clear_results
         self.analysis_replace_results = replace_results
         self.analysis_show_current_results = show_current_results
@@ -1991,6 +1994,7 @@ class MainWindow(QMainWindow):
         self.B_Carpeta.setEnabled(False)
         self.B_Ticker.setEnabled(False)
         self.B_Cancelar.setEnabled(True)
+        self.B_Reiniciar.setEnabled(False)
 
         self.analysis_thread = AnalysisThread(tickers)
         self.analysis_thread.progress.connect(self.append_to_visor)
@@ -2131,6 +2135,7 @@ class MainWindow(QMainWindow):
         self.B_Carpeta.setEnabled(True)
         self.B_Ticker.setEnabled(True)
         self.B_Cancelar.setEnabled(False)
+        self.B_Reiniciar.setEnabled(bool(self.current_tickers))
         self._schedule_next_timed_analysis()
 
         self.analysis_replace_results = False
@@ -2146,6 +2151,15 @@ class MainWindow(QMainWindow):
                 self.cumulative_results.append(row)
                 self._add_result_to_table(row)
                 result_keys.add(key)
+
+        try:
+            a_punto_path, a_punto_count = export_a_punto(self.cumulative_results)
+            self.append_to_visor(
+                f"A_Punto.txt creado: {a_punto_count} valores con Score > "
+                f"{A_PUNTO_MIN_SCORE} -> {a_punto_path}"
+            )
+        except Exception as exc:
+            self.append_to_visor(f"Error creando A_Punto.txt: {exc}")
 
         if not results and not self.cumulative_results:
             self.append_to_visor("No se generaron resultados.")
@@ -2261,20 +2275,6 @@ class MainWindow(QMainWindow):
                 self.append_to_visor(f"Lista TradingView exportada: {tv_file}")
             except Exception as exc:
                 self.append_to_visor(f"Error exportando lista .txt: {exc}")
-
-        # ---------------------------------------------------------
-        # A_Punto.txt
-        # Exporta SIEMPRE los valores con Score > 60 en formato
-        # MERCADO:TICKER, conservando la notacion original.
-        # ---------------------------------------------------------
-        try:
-            a_punto_path, a_punto_count = export_a_punto(sorted_results)
-            self.append_to_visor(
-                f"A_Punto.txt creado: {a_punto_count} valores con Score > "
-                f"{A_PUNTO_MIN_SCORE} -> {a_punto_path}"
-            )
-        except Exception as exc:
-            self.append_to_visor(f"Error creando A_Punto.txt: {exc}")
 
         high_score_results = [
             row for row in sorted_results if int(row.get("Score", 0)) >= EMAIL_MIN_SCORE
@@ -2400,6 +2400,16 @@ class MainWindow(QMainWindow):
             self.analysis_thread.request_stop()
             self.append_to_visor("Cancelando análisis...")
             self.B_Cancelar.setEnabled(False)
+
+    def on_b_reiniciar(self):
+        if self.analysis_thread and self.analysis_thread.isRunning():
+            return
+        if not self.current_tickers:
+            return
+
+        tickers = list(self.current_tickers)
+        self.append_to_visor("Reiniciando análisis desde el principio...")
+        self.start_analysis(tickers, clear_results=True, replace_results=True)
 
 
 if __name__ == "__main__":

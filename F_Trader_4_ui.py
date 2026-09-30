@@ -44,6 +44,10 @@ class Ui_MainWindow(object):
 "    background-color: orange;\n"
 "}")
         self.P_MercadoAmericano.setValue(0)
+        self.B_Reiniciar = QPushButton(self.centralwidget)
+        self.B_Reiniciar.setObjectName(u"B_Reiniciar")
+        self.B_Reiniciar.setGeometry(QRect(1040, 860, 150, 35))
+        self.B_Reiniciar.setFont(font)
         self.B_LimpiarResultados = QPushButton(self.centralwidget)
         self.B_LimpiarResultados.setObjectName(u"B_LimpiarResultados")
         self.B_LimpiarResultados.setGeometry(QRect(1220, 860, 100, 35))
@@ -179,6 +183,7 @@ class Ui_MainWindow(object):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"Mi Screener V5", None))
         self.P_MercadoEuropeo.setFormat("")
         self.P_MercadoAmericano.setFormat("")
+        self.B_Reiniciar.setText(QCoreApplication.translate("MainWindow", u"Reiniciar an\u00e1lisis", None))
         self.B_LimpiarResultados.setText(QCoreApplication.translate("MainWindow", u"Limpiar", None))
         self.B_Cancelar.setText(QCoreApplication.translate("MainWindow", u"Cancelar", None))
         self.B_Salir.setText(QCoreApplication.translate("MainWindow", u"Salir", None))

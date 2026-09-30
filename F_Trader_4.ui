@@ -61,7 +61,25 @@
      <string/>
     </property>
    </widget>
-   <widget class="QPushButton" name="B_LimpiarResultados">
+    <widget class="QPushButton" name="B_Reiniciar">
+     <property name="geometry">
+      <rect>
+        <x>1040</x>
+        <y>860</y>
+        <width>150</width>
+        <height>35</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+        <pointsize>10</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string>Reiniciar análisis</string>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="B_LimpiarResultados">
     <property name="geometry">
      <rect>
       <x>1220</x>
