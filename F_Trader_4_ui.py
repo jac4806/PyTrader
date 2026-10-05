@@ -180,7 +180,7 @@ class Ui_MainWindow(object):
     # setupUi
 
     def retranslateUi(self, MainWindow):
-        MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"Mi Screener V5", None))
+        MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"Mi Screener V5.5", None))
         self.P_MercadoEuropeo.setFormat("")
         self.P_MercadoAmericano.setFormat("")
         self.B_Reiniciar.setText(QCoreApplication.translate("MainWindow", u"Reiniciar an\u00e1lisis", None))
