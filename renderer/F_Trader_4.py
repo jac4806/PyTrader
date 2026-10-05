@@ -91,6 +91,7 @@ VWAP_WEIGHT = 5
 EXPORT_EXCEL = True
 EXCEL_NAME = "SmartMoney_Screener.xlsx"
 APP_DIR = Path(__file__).resolve().parent
+FAILED_TICKERS_FILE = "No_Analizados.txt"
 
 
 def load_env_file(path):
@@ -946,6 +947,7 @@ class AnalysisThread(QThread):
     def __init__(self, tickers):
         super().__init__()
         self.tickers = tickers
+        self.failed_tickers = []
         self._stop_requested = False
 
     def request_stop(self):
@@ -968,6 +970,7 @@ class AnalysisThread(QThread):
                 return
 
             if stock_data is None:
+                self.failed_tickers.append(ticker)
                 self.progress.emit(error_msg)
                 continue
 
@@ -1022,11 +1025,21 @@ class AnalysisThread(QThread):
                 results.append(result)
                 self.result_ready.emit(result)
             except Exception as exc:
+                self.failed_tickers.append(ticker)
                 self.progress.emit(f"Error procesando {ticker}: {exc}")
 
             time.sleep(DELAY_BETWEEN_REQUESTS)
 
         self.finished.emit(results)
+
+
+def export_unanalyzed_tickers(tickers, filename=FAILED_TICKERS_FILE):
+    values = list(dict.fromkeys(
+        str(ticker).strip() for ticker in tickers if str(ticker).strip()
+    ))
+    output_path = Path(filename)
+    output_path.write_text("\n".join(values) + ("\n" if values else ""), encoding="utf-8")
+    return output_path, len(values)
 
 
 class MainWindow(QMainWindow):
@@ -1884,6 +1897,8 @@ class MainWindow(QMainWindow):
             for p in parts:
                 if not p:
                     continue
+                if p.upper().startswith("###"):
+                    continue
                 p = normalize_ticker(p)
                 if p:
                     combined.append(p)
@@ -2082,6 +2097,15 @@ class MainWindow(QMainWindow):
 
         self.analysis_replace_results = False
         self.analysis_show_current_results = False
+
+        try:
+            failed_tickers = getattr(self.analysis_thread, "failed_tickers", [])
+            failed_path, failed_count = export_unanalyzed_tickers(failed_tickers)
+            self.append_to_visor(
+                f"Valores no analizados: {failed_count} -> {failed_path}"
+            )
+        except Exception as exc:
+            self.append_to_visor(f"Error creando {FAILED_TICKERS_FILE}: {exc}")
 
         result_keys = {
             (row.get("Ticker"), row.get("Fecha"))
